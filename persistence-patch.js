@@ -81,17 +81,17 @@ patch(
 
 const oldLoadCheck = `      if (!sessionDirExists(meta.sessionId)) {\n        console.error(\`[SessionManager] ⚠️  Session ${'${meta.sessionId}'} indexée dans MongoDB mais aucun dossier local de credentials trouvé — reconnexion impossible sans migration (voir scripts/migrate-sessions-to-hybrid.js).\`);\n        continue;\n      }`;
 
-const newLoadCheck = `      let hasPersistentAuth = await hasMongoAuthState(db, meta.sessionId);\n      if (!hasPersistentAuth && sessionDirExists(meta.sessionId)) {\n        try {\n          await importLocalAuthDirectoryToMongo(db, meta.sessionId, getSessionDir(meta.sessionId));\n          hasPersistentAuth = await hasMongoAuthState(db, meta.sessionId);\n        } catch (err) {\n          console.error(\`[SessionManager] Migration locale→Mongo ${'${meta.sessionId}'} échouée:\`, err.message);\n        }\n      }\n      if (!hasPersistentAuth) {\n        console.error(\`[SessionManager] ⚠️ Session ${'${meta.sessionId}'} indexée mais sans credentials Mongo persistants — réappairage requis une fois.\`);\n        continue;\n      }`;
+const newLoadCheck = `      // Le numéro principal est démarré par index.js avec la même collection\n      // auth_session_<numéro>. Le lancer ici créerait deux sockets concurrents.\n      const configuredMain = String(process.env.PHONE_NUMBER || '').replace(/\\D/g, '');\n      if (configuredMain && phoneNumber === configuredMain) {\n        console.log(\`[SessionManager] ⏭️ ${'${meta.sessionId}'} réservé à la session principale — chargement par index.js\`);\n        continue;\n      }\n\n      let hasPersistentAuth = await hasMongoAuthState(db, meta.sessionId);\n      if (!hasPersistentAuth && sessionDirExists(meta.sessionId)) {\n        try {\n          await importLocalAuthDirectoryToMongo(db, meta.sessionId, getSessionDir(meta.sessionId));\n          hasPersistentAuth = await hasMongoAuthState(db, meta.sessionId);\n        } catch (err) {\n          console.error(\`[SessionManager] Migration locale→Mongo ${'${meta.sessionId}'} échouée:\`, err.message);\n        }\n      }\n      if (!hasPersistentAuth) {\n        console.error(\`[SessionManager] ⚠️ Session ${'${meta.sessionId}'} indexée mais sans credentials Mongo persistants — réappairage requis une fois.\`);\n        continue;\n      }`;
 
 patch(
   'utils/sessionManager.js',
   oldLoadCheck,
   newLoadCheck,
-  'let hasPersistentAuth = await hasMongoAuthState(db, meta.sessionId);',
+  'const configuredMain = String(process.env.PHONE_NUMBER',
   'restauration multi-session depuis Mongo'
 );
 
-// ── SESSION PRINCIPALE : Mongo si MONGODB_URI est disponible ─────────────
+// ── SESSION PRINCIPALE : même collection persistante session_<numéro> ───
 patch(
   'index.js',
   "const { startSelfKeepAlive } = require('./utils/selfKeepAlive');",
@@ -102,13 +102,13 @@ patch(
 
 const oldMainAuth = `  const sessionFolder = \`./${'${config.sessionName || \'auth_info_baileys\'}'}\`;\n  const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);\n  const { version } = await fetchLatestBaileysVersion();`;
 
-const newMainAuth = `  const sessionFolder = \`./${'${config.sessionName || \'auth_info_baileys\'}'}\`;\n  let authState;\n  if (_mongoDb) {\n    const persistentSessionId = 'owner_main';\n    const localSessionDir = path.resolve(sessionFolder);\n    if (!(await hasMongoAuthState(_mongoDb, persistentSessionId)) && fs.existsSync(path.join(localSessionDir, 'creds.json'))) {\n      try {\n        await importLocalAuthDirectoryToMongo(_mongoDb, persistentSessionId, localSessionDir);\n      } catch (err) {\n        originalConsoleError('[MongoAuth] Migration owner locale→Mongo échouée:', err.message);\n      }\n    }\n    authState = await useMongoAuthState(_mongoDb, persistentSessionId);\n    originalConsoleLog('✅ [MongoAuth] Session principale stockée durablement dans MongoDB');\n  } else {\n    authState = await useMultiFileAuthState(sessionFolder);\n    originalConsoleLog('⚠️ [MongoAuth] Mongo indisponible — session principale en stockage local de secours');\n  }\n  const { state, saveCreds } = authState;\n  const { version } = await fetchLatestBaileysVersion();`;
+const newMainAuth = `  const sessionFolder = \`./${'${config.sessionName || \'auth_info_baileys\'}'}\`;\n  let authState;\n  if (_mongoDb) {\n    const mainPhone = String(process.env.PHONE_NUMBER || config.ownerNumber?.[0] || '').replace(/\\D/g, '');\n    const persistentSessionId = mainPhone ? \`session_${'${mainPhone}'}\` : 'owner_main';\n    const localSessionDir = path.resolve(sessionFolder);\n    let hasPersistentMainAuth = await hasMongoAuthState(_mongoDb, persistentSessionId);\n\n    if (!hasPersistentMainAuth && fs.existsSync(path.join(localSessionDir, 'creds.json'))) {\n      try {\n        await importLocalAuthDirectoryToMongo(_mongoDb, persistentSessionId, localSessionDir);\n        hasPersistentMainAuth = await hasMongoAuthState(_mongoDb, persistentSessionId);\n      } catch (err) {\n        originalConsoleError('[MongoAuth] Migration owner locale→Mongo échouée:', err.message);\n      }\n    }\n\n    // Ne jamais créer silencieusement de nouveaux creds pour le compte\n    // principal : s'ils ont disparu du disque Render avant migration, le\n    // pairing explicite via le site/API doit recréer session_<numéro>.\n    if (!hasPersistentMainAuth) {\n      originalConsoleLog(\`⚠️ [MongoAuth] Aucune auth persistante pour ${'${persistentSessionId}'} — réappairage explicite requis.\`);\n      return null;\n    }\n\n    authState = await useMongoAuthState(_mongoDb, persistentSessionId);\n    originalConsoleLog(\`✅ [MongoAuth] Session principale ${'${persistentSessionId}'} chargée depuis MongoDB\`);\n  } else {\n    authState = await useMultiFileAuthState(sessionFolder);\n    originalConsoleLog('⚠️ [MongoAuth] Mongo indisponible — session principale en stockage local de secours');\n  }\n  const { state, saveCreds } = authState;\n  const { version } = await fetchLatestBaileysVersion();`;
 
 patch(
   'index.js',
   oldMainAuth,
   newMainAuth,
-  "persistentSessionId = 'owner_main'",
+  'let hasPersistentMainAuth = await hasMongoAuthState',
   'auth Mongo session principale'
 );
 
