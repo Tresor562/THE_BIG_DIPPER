@@ -1,0 +1,4 @@
+[submodule "bot"]
+	path = bot
+	url = https://github.com/Tresor562/DIPPER-.git
+	branch = main

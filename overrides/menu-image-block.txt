@@ -1,0 +1,315 @@
+// ══════════════════════════════════════════════════════════════
+// 🖼️  IMAGES DU MENU — PERSONNALISABLES
+// ══════════════════════════════════════════════════════════════
+// ➤ Pour chaque style (0 à 20), tu peux mettre plusieurs URLs directes
+//   d'images. Le bot en choisit une au hasard à chaque .menu
+//
+// ➤ Comment ajouter tes images :
+//   1. Héberge ton image sur : https://imgur.com (Upload → lien direct .jpg/.png)
+//                          ou : https://files.catbox.moe
+//                          ou : n'importe quel lien direct vers une image
+//   2. Colle le lien dans le tableau du style correspondant
+//   3. Utilise uniquement des liens directs dont la réponse est une image
+//
+// ➤ Si tu laisses un tableau vide [], le menu s'affiche sans image
+// ══════════════════════════════════════════════════════════════
+const STYLE_IMAGE_URLS = {
+
+  // ── Style 0 : DIPPER (identité officielle) ─────────────────
+  0: [
+    'https://files.catbox.moe/1k8r1f.jpg',
+  ],
+
+  // ── Style 1 : 𝐃𝐈𝐏𝐏𝐄𝐑 ───────────────────────────────────────
+  1: [
+    // Colle ici jusqu'à 8 liens d'images pour le style Dark
+    // Exemple : 'https://i.imgur.com/tonimage.jpg',
+    'https://i.imgur.com/6F2V6eD.jpeg',
+    'https://i.imgur.com/nX1WVHH.jpeg',
+    'https://i.imgur.com/3z2ABPN.jpeg',
+    // Slots libres (remplace ou ajoute tes URLs) :
+    'https://files.catbox.moe/km94ug.png',
+    'https://files.catbox.moe/mffape.png',
+    'https://files.catbox.moe/7xbk4p.png',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ],
+
+  // ── Style 2 : Naruto ───────────────────────────────────────
+  2: [
+    'https://i.imgur.com/UlDSoMy.jpeg',
+    'https://i.imgur.com/Q8jbvKo.jpeg',
+    'https://i.imgur.com/YK2BKBZ.jpeg',
+     'https://files.catbox.moe/muab4m.jpg',
+     'https://files.catbox.moe/5b351a.jpg',
+     'https://files.catbox.moe/cnglhu.jpg',
+     'https://files.catbox.moe/07lfop.jpg',
+     'https://files.catbox.moe/211w67.jpg',
+     'https://files.catbox.moe/dtj3s9.jpg',
+     'https://files.catbox.moe/t4v076.jpg',
+     'https://files.catbox.moe/5yjazr.jpg',
+  ],
+
+  // ── Style 3 : Cid Kagenou ──────────────────────────────────
+  3: [
+    'https://i.imgur.com/2v3YMYW.jpeg',
+    'https://i.imgur.com/YaFRkON.jpeg',
+    'https://i.imgur.com/wMqFGHH.jpeg',
+     'https://files.catbox.moe/mwcq4j.jpg',
+     'https://files.catbox.moe/3ii420.jpg',
+     'https://files.catbox.moe/ak3hnu.jpg',
+     'https://files.catbox.moe/vrz54q.jpg',
+     'https://files.catbox.moe/87aqe4.jpg',
+     'https://files.catbox.moe/h960vp.jpg',
+     'https://files.catbox.moe/uaglet.jpg',
+     'https://files.catbox.moe/vpfs80.jpg',
+     'https://files.catbox.moe/9we55g.jpg',
+     'https://files.catbox.moe/s2epgj.jpg',
+  ],
+
+  // ── Style 4 : Hacker ───────────────────────────────────────
+  4: [
+    'https://i.imgur.com/OhY9sTe.jpeg',
+    'https://i.imgur.com/dvGCVmo.jpeg',
+    'https://i.imgur.com/qS3c5dh.jpeg',
+    'https://files.catbox.moe/xfb193.jpg',
+    'https://files.catbox.moe/6amjh9.jpg',
+    'https://files.catbox.moe/oouy96.jpg',
+    'https://files.catbox.moe/vki01s.jpg',
+    'https://files.catbox.moe/11t5wk.jpg',
+    'https://files.catbox.moe/16vuqn.jpg',
+    'https://files.catbox.moe/6p9lbk.jpg',
+    'https://files.catbox.moe/ir0g61.jpg',
+    'https://files.catbox.moe/lwcmlg.jpg',
+    'https://files.catbox.moe/4tytog.jpg',
+    'https://files.catbox.moe/s2epgj.jpg',
+    
+  ],
+
+  // ── Style 5 : Manhwa ───────────────────────────────────────
+  5: [
+    'https://i.imgur.com/BJHbV2X.jpeg',
+    'https://i.imgur.com/YDGmsDN.jpeg',
+    'https://i.imgur.com/4jJukHR.jpeg',
+    'https://files.catbox.moe/yp09dh.jpg',
+    'https://files.catbox.moe/qlv9rl.jpg',
+    'https://files.catbox.moe/7ewuua.jpg',
+    'https://files.catbox.moe/awrwem.jpg',
+    'https://files.catbox.moe/sfvi8b.jpg',
+    'https://files.catbox.moe/eony8h.jpg',
+    'https://files.catbox.moe/zbvq7j.jpg',
+  ],
+
+  // ── Style 6 : Ai Oshino ────────────────────────────────────
+  6: [
+    'https://i.imgur.com/Rb0ZWOH.jpeg',
+    'https://i.imgur.com/7b4iuDP.jpeg',
+    'https://i.imgur.com/pHqnFmC.jpeg',
+    'https://files.catbox.moe/5nddcl.jpg',
+    'https://files.catbox.moe/ndvf4k.jpg',
+    'https://files.catbox.moe/u7178f.jpg',
+    'https://files.catbox.moe/gkek17.jpg',
+    'https://files.catbox.moe/9drm3j.jpg',
+    'https://files.catbox.moe/g3qybv.jpg',
+    'https://files.catbox.moe/em2859.jpg',
+  ],
+
+  // ── Style 7 : Ruby Oshino ──────────────────────────────────
+  7: [
+    'https://i.imgur.com/zLaT5KT.jpeg',
+    'https://i.imgur.com/A5cMbwA.jpeg',
+    'https://i.imgur.com/mkrmEQf.jpeg',
+   'https://files.catbox.moe/gqf5ba.jpg',
+   'https://files.catbox.moe/jfzlre.jpg',
+   'https://files.catbox.moe/whmaf8.jpg',
+   'https://files.catbox.moe/rgbyxa.jpg',
+   'https://files.catbox.moe/61axnd.jpg',
+  ],
+
+  // ── Style 8 : Satoru Gojo ──────────────────────────────────
+  8: [
+    'https://i.imgur.com/VgmhBaZ.jpeg',
+    'https://i.imgur.com/GwnNj7R.jpeg',
+    'https://i.imgur.com/wXsUEab.jpeg',
+     'https://files.catbox.moe/xp5ypp.jpg',
+     'https://files.catbox.moe/pbzdh3.jpeg',
+     'https://files.catbox.moe/tf954v.jpg',
+     'https://files.catbox.moe/eb9tg6.jpg',
+    'https://files.catbox.moe/rgbyxa.jpg',
+  ],
+
+  // ── Style 9 : Oreki Houtarou ───────────────────────────────
+  9: [
+    'https://i.imgur.com/hIiPCsY.jpeg',
+    'https://i.imgur.com/mJqzPJl.jpeg',
+    'https://i.imgur.com/wXrNGFp.jpeg',
+    'https://files.catbox.moe/brtvxo.jpg',
+    'https://files.catbox.moe/jtvqys.jpg',
+    'https://files.catbox.moe/8vh1vn.jpg',
+     'https://files.catbox.moe/qddrjg.jpg',
+    'https://files.catbox.moe/zsmflt.jpg',
+  ],
+
+  // ── Style 10 : Marin Kitagawa ──────────────────────────────
+  10: [
+    'https://i.imgur.com/4sMVZaB.jpeg',
+    'https://i.imgur.com/9t2i4VK.jpeg',
+    'https://i.imgur.com/v8BByTt.jpeg',
+    'https://files.catbox.moe/xxgh2f.jpg',
+    'https://files.catbox.moe/w4kcey.jpg',
+    'https://files.catbox.moe/a7rh4y.jpg',
+    'https://files.catbox.moe/oe68x7.jpg',
+    'https://files.catbox.moe/fabbon.jpg',
+  ],
+
+  // ── Style 11 : Sung Jin-Woo ─────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 11
+  11: [
+    'https://files.catbox.moe/159j1v.jpg',
+'https://files.catbox.moe/qb9vir.jpg',
+'https://files.catbox.moe/t3eg7h.jpg',
+'https://files.catbox.moe/3cxl8v.jpg',
+'https://files.catbox.moe/yrtcim.jpg',
+  ],
+
+  // ── Style 12 : Madara Uchiha ────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 12
+  12: [
+    'https://files.catbox.moe/jf1xo8.jpg',
+'https://files.catbox.moe/dnglo4.jpg',
+'https://files.catbox.moe/tgg275.jpg',
+'https://files.catbox.moe/vycmij.jpg',
+'https://files.catbox.moe/fzdb9v.jpg',
+
+  ],
+
+  // ── Style 13 : Aizen Sosuke ─────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 13
+  13: [
+'https://files.catbox.moe/svnguu.jpg',
+'https://files.catbox.moe/t5d7if.jpg',
+'https://files.catbox.moe/wlc2sk.jpg',
+'https://files.catbox.moe/xdxozg.jpg',
+'https://files.catbox.moe/njpf97.jpg',
+  ],
+
+  // ── Style 14 : Lelouch Lamperouge ───────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 14
+  14: [
+'https://files.catbox.moe/bu8i4g.jpg',
+'https://files.catbox.moe/sqv3vo.jpg',
+'https://files.catbox.moe/msyxa9.jpg',
+'https://files.catbox.moe/pyvzcn.jpg',
+'https://files.catbox.moe/g82y2n.jpg',
+  ],
+
+  // ── Style 15 : Eren Yeager ──────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 15
+  15: [
+    'https://ibb.co/hJ40smSM',
+'https://ibb.co/6RkhRGS',
+'https://ibb.co/PvHshz3N',
+'https://ibb.co/pvvTwQRP',
+'https://ibb.co/7xLN3DVG',
+  ],
+
+  // ── Style 16 : Itachi Uchiha ────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 16
+  16: [
+    'https://ibb.co/KcQ7DCMy',
+    'https://ibb.co/bMdNxph0',
+'https://ibb.co/rG3zVjSq',
+'https://ibb.co/j9jhns6H',
+'https://ibb.co/fYbSgy1k', 
+  ],
+
+  // ── Style 17 : Yhwach ───────────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 17
+  17: [
+    'https://ibb.co/XxDvfV22',
+'https://ibb.co/tw7DTCsC',
+'https://ibb.co/TqHVQr5L',
+'https://ibb.co/Z1Lmh5h2',
+  ],
+
+  // ── Style 18 : Business Pro ─────────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 18
+  18: [
+    'https://ibb.co/XxHy58Tw',
+'https://ibb.co/qL2MkbGf',
+'https://ibb.co/Q3K00kLM',
+'https://ibb.co/s8s5hM0',
+  ],
+
+  // ── Style 19 : Shadow Merchant ──────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 19
+  19: [
+    'https://ibb.co/TB08rwxg',
+'https://ibb.co/fGLfhf7R',
+'https://ibb.co/b5QXxFSz',
+'https://ibb.co/yc6YNw5k',
+  ],
+
+  // ── Style 20 : Purgeur Suprême ──────────────────────────────
+  // TODO : Remplacer par l'URL de l'image officielle du Style 20
+  20: [
+    'https://ibb.co/qMB1wLgt',
+'https://ibb.co/Jj2GntxC',
+'https://ibb.co/tjLYTp8',
+  ],
+};
+
+// ── Télécharge une URL seulement si la réponse est réellement une image ──
+function responseToImageBuffer(res) {
+  const contentType = String(res?.headers?.['content-type'] || '').toLowerCase();
+  if (!contentType.startsWith('image/')) return null;
+  const buffer = Buffer.from(res?.data || []);
+  return buffer.length > 1000 ? buffer : null;
+}
+
+// Récupère une image personnalisée depuis une URL unique (menu personnalisé).
+async function getImageBufferFromUrl(url) {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
+  const axios = require('axios');
+  try {
+    const res = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      maxRedirects: 5,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    return responseToImageBuffer(res);
+  } catch (_) {
+    // Image personnalisée invalide/inaccessible → repli sur l'image du style
+    return null;
+  }
+}
+
+async function getImageBufferForStyle(styleNum) {
+  const axios = require('axios');
+  // Filtrer les entrées vides, non textuelles ou non HTTP(S).
+  const urls = (STYLE_IMAGE_URLS[styleNum] || STYLE_IMAGE_URLS[1])
+    .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+  if (urls.length === 0) return null;
+  // Choisir une URL au hasard
+  const shuffled = [...urls].sort(() => Math.random() - 0.5);
+  for (const url of shuffled) {
+    try {
+      const res = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 10000,
+        maxRedirects: 5,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      const image = responseToImageBuffer(res);
+      if (image) return image;
+    } catch (_) {
+      // Essaie l'URL suivante si celle-ci échoue
+    }
+  }
+  return null; // Toutes les URLs ont échoué → menu en texte
+}
+
