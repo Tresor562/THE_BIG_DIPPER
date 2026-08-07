@@ -14,15 +14,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Expand bot payload when present
+      - name: Expand bot payload when upload is complete
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f bot_payload.tar.gz ]; then
-            echo "No bot payload yet; nothing to expand."
+          if [ ! -f payload.complete ]; then
+            echo "Payload upload not complete yet."
             exit 0
           fi
 
+          cat payload.part*.b64 | base64 -d > bot_payload.tar.gz
           tmpdir="$(mktemp -d)"
           tar -xzf bot_payload.tar.gz -C "$tmpdir"
 
