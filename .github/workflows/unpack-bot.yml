@@ -1,4 +1,4 @@
-name: Expand audited bot payload
+name: Copy bot source
 
 on:
   push:
@@ -8,34 +8,41 @@ permissions:
   contents: write
 
 jobs:
-  expand:
+  copy-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout destination
         uses: actions/checkout@v4
 
-      - name: Expand bot payload when upload is complete
+      - name: Copy source repository
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ ! -f payload.complete ]; then
-            echo "Payload upload not complete yet."
-            exit 0
-          fi
-
-          cat payload.part*.b64 | base64 -d > bot_payload.tar.gz
           tmpdir="$(mktemp -d)"
-          tar -xzf bot_payload.tar.gz -C "$tmpdir"
-
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/Tresor562/DIPPER-.git" "$tmpdir/source"
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -a "$tmpdir"/. .
-
+          cp -a "$tmpdir/source"/. .
+          rm -rf .git
+          # restore destination git metadata
+          git init
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main
+          git checkout -B main origin/main
+          # replace working tree again after checkout
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$tmpdir/source"/. .
+          rm -rf .git
+          git init
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main
+          git checkout -B main FETCH_HEAD
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$tmpdir/source"/. .
+          rm -rf .git
+          git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
-            exit 0
-          fi
-          git commit -m "Deploy audited THE BIG DIPPER bot"
+          git commit -m "Copy THE BIG DIPPER source"
           git push origin main
