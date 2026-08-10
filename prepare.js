@@ -39,6 +39,7 @@ copy(path.join(OVERRIDES, 'gc2.js'), path.join(BOT, 'commands/group_management/g
 copy(path.join(OVERRIDES, 'gc3.js'), path.join(BOT, 'commands/group_management/gc3.js'));
 copy(path.join(OVERRIDES, 'gc4.js'), path.join(BOT, 'commands/group_management/gc4.js'));
 copy(path.join(OVERRIDES, 'souverain.js'), path.join(BOT, 'commands/general_tools/souverain.js'));
+copy(path.join(OVERRIDES, 'repere.js'), path.join(BOT, 'commands/bot_sovereignty/repere.js'));
 
 // ── FIX ADMIN LID / PN ────────────────────────────────────────────────
 // Baileys récent peut retourner un participant sous la forme :
