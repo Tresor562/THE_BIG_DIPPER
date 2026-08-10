@@ -1,3 +1,17 @@
+'use strict';
+
+// Couche de compatibilité uniquement : le corps historique de la commande
+// reste inchangé. `kord`, `wtype` et `Baileys()` existaient dans son ancien
+// framework ; on les expose ici puis on adapte l'appel DIPPER en bas du fichier.
+let _legacyRegistration = null;
+function kord(meta, handler) {
+  _legacyRegistration = { meta, handler };
+}
+const wtype = false;
+async function Baileys() {
+  return require('@whiskeysockets/baileys');
+}
+
 kord({
   cmd: 'gcstatus|upswgc',
   desc: 'Send group status update',
@@ -158,3 +172,69 @@ kord({
     return await m.sendErr(e)
   }
 })
+
+// Adaptateur DIPPER -> ancien objet `m`. Aucun changement du déroulement ci-dessus.
+async function buildLegacyMessage(sock, msg, extra) {
+  const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+  const quotedMessage = contextInfo?.quotedMessage || null;
+  let quoted = null;
+
+  if (quotedMessage) {
+    const type = Object.keys(quotedMessage)[0];
+    const media = quotedMessage[type];
+    const downloadType = type === 'imageMessage' ? 'image'
+      : type === 'videoMessage' ? 'video'
+      : type === 'audioMessage' ? 'audio'
+      : null;
+
+    quoted = {
+      image: type === 'imageMessage',
+      video: type === 'videoMessage',
+      audio: type === 'audioMessage',
+      text: media?.caption || media?.text || '',
+      mimetype: media?.mimetype,
+      ptt: media?.ptt,
+      seconds: media?.seconds,
+      waveform: media?.waveform,
+      async download() {
+        if (!downloadType) return null;
+        const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+        const stream = await downloadContentFromMessage(media, downloadType);
+        const chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        return Buffer.concat(chunks);
+      },
+    };
+  }
+
+  return {
+    chat: extra.from,
+    isAdmin: !!extra.isAdmin,
+    isGroup: !!extra.isGroup,
+    client: sock,
+    quoted,
+    async send(text) {
+      return extra.reply(String(text));
+    },
+    async react(text) {
+      return sock.sendMessage(extra.from, { react: { text, key: msg.key } });
+    },
+    async sendErr(err) {
+      const message = err?.message || String(err || 'Unknown error');
+      return extra.reply(`❌ ${message}`);
+    },
+  };
+}
+
+module.exports = {
+  name: 'gc2',
+  aliases: ['gcstatus', 'upswgc'],
+  category: '⚙️ Gestion de groupe',
+  description: _legacyRegistration?.meta?.desc || 'Send group status update',
+  usage: '.gc2 <texte> | répondre à un média',
+
+  async execute(sock, msg, args, extra) {
+    const m = await buildLegacyMessage(sock, msg, extra);
+    return _legacyRegistration.handler(m, args.join(' '));
+  },
+};
