@@ -11,7 +11,7 @@ function toSmallCaps(text) {
   const smallCaps = "ᴀʙᴄᴅᴇғɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢ0123456789";
 
   const cleanedText = text.toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
   return cleanedText.split('').map(c => {
     const index = normal.indexOf(c);
@@ -19,12 +19,14 @@ function toSmallCaps(text) {
   }).join('');
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 module.exports = {
     name: 'souverain',
-    aliases: ['owner', 'creator', 'souverain_dev', 'developpeur' ,'maitre', 'developper','architecte', 'king'],
+    aliases: ['owner', 'creator', 'souverain_dev', 'developpeur', 'maitre', 'developper', 'architecte', 'king'],
     category: '🛠️ Outils généraux',
     description: '『 𝐃𝐈𝐏𝐏𝐄𝐑 』➪ ɪɴᴠᴏǫᴜᴇ ʟᴇs ɪɴғᴏʀᴍᴀᴛɪᴏɴs sᴀᴄʀᴇᴇs ᴅᴜ ɢʀᴀɴᴅ ᴀʀᴄʜɪᴛᴇᴄᴛᴇ',
-    usage: `${config.prefix || '.'}souverain`,
+    usage: `${config.prefix || '.'}owner`,
     ownerOnly: false,
     groupOnly: false,
     botAdminNeeded: false,
@@ -33,34 +35,53 @@ module.exports = {
         const chatId = extra.from;
 
         try {
-            // Tes deux numéros Supreme Owner, immuables
-            const myNumbers = ["2290146202259", "2290155745907"];
-            const myName ="Trésor";
+            // Une fiche indépendante par numéro. Des noms vCard distincts
+            // empêchent certains clients WhatsApp de fusionner visuellement
+            // les deux numéros comme s'ils appartenaient à une seule carte.
+            const owners = [
+                { number: '2290146202259', displayName: 'Trésor — Owner 1', firstName: 'Trésor', lastName: 'Owner 1' },
+                { number: '2290155745907', displayName: 'Trésor — Owner 2', firstName: 'Trésor', lastName: 'Owner 2' },
+            ];
 
-            // 1. Message d'introduction mystique
+            // 1. Réponse immédiate à la commande.
             await extra.reply(`*ɪɴᴄʟɪɴᴇ-ᴛᴏɪ... ᴠᴏɪᴄɪ ʟ'ᴀʀᴄʜɪᴛᴇᴄᴛᴇ ᴅᴇ ᴍᴏɴ ᴇssᴇɴᴄᴇ ᴇᴛ ʟᴇ ɢᴀʀᴅɪᴇɴ ᴅᴇ ᴍᴇs ᴄɪʀᴄᴜɪᴛs ♛.*`);
 
-            // 2. Deux numéros = deux cartes de contact distinctes.
-            // Une seule vCard avec deux TEL est fusionnée par WhatsApp en
-            // un seul contact ; on crée donc une vCard et un message par numéro.
-            for (const number of myNumbers) {
-                const vcard = 'BEGIN:VCARD\n' +
-                    'VERSION:3.0\n' +
-                    `FN:${myName}\n` +
-                    `ORG:DIPPER Kingdom;\n` +
-                    `TEL;type=CELL;type=VOICE;waid=${number}:+${number}\n` +
-                    'END:VCARD';
+            // 2. Attendre exactement 5 secondes avant les contacts.
+            await sleep(5000);
 
-                await sock.sendMessage(chatId, {
-                    contacts: {
-                        displayName: myName,
-                        contacts: [{ vcard }]
-                    }
-                }, chatId.endsWith('@g.us') ? { quoted: msg } : undefined);
+            // 3. Chaque envoi contient EXACTEMENT une vCard et un seul TEL/waid.
+            // Le waid permet à WhatsApp d'associer la carte au compte et
+            // d'ouvrir directement son IB depuis la fiche contact.
+            for (let i = 0; i < owners.length; i++) {
+                const owner = owners[i];
+                const vcard = [
+                    'BEGIN:VCARD',
+                    'VERSION:3.0',
+                    `N:${owner.lastName};${owner.firstName};;;`,
+                    `FN:${owner.displayName}`,
+                    'ORG:DIPPER Kingdom;',
+                    `TEL;TYPE=CELL;TYPE=VOICE;waid=${owner.number}:+${owner.number}`,
+                    'END:VCARD',
+                ].join('\n');
+
+                await sock.sendMessage(
+                    chatId,
+                    {
+                        contacts: {
+                            displayName: owner.displayName,
+                            contacts: [{ vcard }],
+                        },
+                    },
+                    chatId.endsWith('@g.us') ? { quoted: msg } : undefined
+                );
+
+                // Petit espacement pour forcer deux messages indépendants
+                // dans l'interface et éviter toute impression de carte groupée.
+                if (i < owners.length - 1) await sleep(750);
             }
 
-            // 3. Réaction de respect royal
-            await sock.sendMessage(chatId, { react: { text: "👑", key: msg.key } });
+            // 4. Réaction après l'envoi des deux contacts.
+            await sock.sendMessage(chatId, { react: { text: '👑', key: msg.key } });
 
         } catch (error) {
             console.error('Souverain command error:', error);
