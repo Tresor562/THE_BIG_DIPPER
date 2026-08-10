@@ -24,28 +24,20 @@ function replaceBlock(startNeedle, endNeedle, replacement, label) {
   const start = src.indexOf(startNeedle);
   const end = start === -1 ? -1 : src.indexOf(endNeedle, start);
   if (start === -1 || end === -1 || end <= start) {
-    if (src.includes(replacement.trim().slice(0, 100))) {
-      console.log(`[menu-visual] ${label} déjà appliqué`);
-      return;
-    }
     throw new Error(`[menu-visual] ${label}: bloc introuvable`);
   }
   src = src.slice(0, start) + replacement + src.slice(end);
   console.log(`[menu-visual] ${label} appliqué`);
 }
 
-// Outils Baileys natifs pour un vrai bouton CTA URL sous le menu.
-replaceOnce(
-  "const { getConnectedOwnerName } = require('../../utils/ownerIdentity');",
-  "const { getConnectedOwnerName } = require('../../utils/ownerIdentity');\nconst { proto, prepareWAMessageMedia, generateWAMessageFromContent } = require('@whiskeysockets/baileys');",
-  'imports interactifs Baileys'
-);
+function bodyOf(fn) {
+  const text = fn.toString();
+  return text.slice(text.indexOf('{') + 1, text.lastIndexOf('}')).trim();
+}
 
-// Expéditeur visuel commun : image du style/personnalisée + texte + CTA chaîne.
-const senderHelper = String.raw`
-// [VISUAL MENU V2] Envoi commun à .menu, catégories, pagination et .allmenu.
-// Le CTA ouvre directement la chaîne WhatsApp configurée dans config.social.
-async function sendStyledMenuMessage(sock, jid, options = {}) {
+// Ces fonctions TARGET ne sont jamais exécutées par ce script : leur source
+// est injectée dans bot/commands/general_tools/menu.js après prepare.js.
+async function TARGET_sendStyledMenuMessage(sock, jid, options = {}) {
   const {
     text = '',
     style = 0,
@@ -131,30 +123,31 @@ async function sendStyledMenuMessage(sock, jid, options = {}) {
     await sock.relayMessage(jid, generated.message, { messageId: generated.key.id });
     return generated;
   } catch (err) {
-    // Fallback pour ne jamais casser le menu si WhatsApp refuse ponctuellement
-    // l'interactif. Le lien reste cliquable même si le bouton natif échoue.
     console.warn('[Menu] interactive CTA indisponible, fallback standard:', err.message);
     const fallbackText = `${text}\n\n📢 *Chaîne officielle :* ${channelUrl}`;
     if (imageBuffer && fallbackText.length <= 1000) {
-      return sock.sendMessage(jid, { image: imageBuffer, caption: fallbackText, contextInfo }, quoted ? { quoted } : undefined);
+      return sock.sendMessage(
+        jid,
+        { image: imageBuffer, caption: fallbackText, contextInfo },
+        quoted ? { quoted } : undefined
+      );
     }
     if (imageBuffer) {
-      await sock.sendMessage(jid, { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo }, quoted ? { quoted } : undefined);
+      await sock.sendMessage(
+        jid,
+        { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo },
+        quoted ? { quoted } : undefined
+      );
     }
-    return sock.sendMessage(jid, { text: fallbackText, contextInfo }, quoted ? { quoted } : undefined);
+    return sock.sendMessage(
+      jid,
+      { text: fallbackText, contextInfo },
+      quoted ? { quoted } : undefined
+    );
   }
 }
 
-`;
-replaceOnce(
-  '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES — aperçu numéroté + réponse au menu',
-  senderHelper + '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES — aperçu numéroté + réponse au menu',
-  'expéditeur visuel commun'
-);
-
-// Catégorie : désormais exactement dans le style actif, avec commandes préfixées
-// et footer du style. L'image/bouton sont ajoutés par sendStyledMenuMessage().
-const styledCategoryDetail = String.raw`function buildCategoryDetail(style, catName, cmds, page = 1, context = {}) {
+function TARGET_buildCategoryDetail(style, catName, cmds, page = 1, context = {}) {
   const s = STYLES[style] || STYLES[1];
   const sorted = cmds.slice().sort((a, b) => a.name.localeCompare(b.name));
   const totalPages = Math.max(1, Math.ceil(sorted.length / COMMANDS_PER_PAGE));
@@ -178,63 +171,16 @@ const styledCategoryDetail = String.raw`function buildCategoryDetail(style, catN
   text += s.catClose();
   text += `📜 *${sorted.length} commandes dans cette catégorie*\n`;
   if (totalPages > 1) {
-    text += `➡️ Répondez *suivant*, *précédent* ou *page N* pour naviguer.\n`;
+    text += '➡️ Répondez *suivant*, *précédent* ou *page N* pour naviguer.\n';
   }
-  text += `🔎 Répondez avec le *nom d'une commande* pour voir sa fiche.\n`;
-  text += `0️⃣ Répondez avec *0* pour revenir au menu principal.\n\n`;
+  text += '🔎 Répondez avec le *nom d\'une commande* pour voir sa fiche.\n';
+  text += '0️⃣ Répondez avec *0* pour revenir au menu principal.\n\n';
   text += s.footer();
   text += SIGNATURE;
   return text;
 }
 
-`;
-replaceBlock(
-  'function buildCategoryDetail(catName, cmds, page = 1) {',
-  '// ══════════════════════════════════════════════════════════════\n// 🔎 MOTEUR DE RECHERCHE & CORRECTION FLOUE',
-  styledCategoryDetail,
-  'catégories stylées'
-);
-
-// Réponses de navigation : image + CTA + tracking au lieu d'un simple texte.
-replaceOnce(
-  "  const sendAndTrack = async (text, extraData = {}) => {\n    const sentMsg = await sock.sendMessage(extra.from, { text }, { quoted: msg });\n    if (sentMsg?.key?.id) trackMenu(sentMsg.key.id, { ...entry, ...extraData });\n    return sentMsg;\n  };",
-  "  const sendAndTrack = async (text, extraData = {}) => {\n    const merged = { ...entry, ...extraData };\n    const sentMsg = await sendStyledMenuMessage(sock, extra.from, {\n      text,\n      style: merged.style,\n      imageUrl: merged.imageUrl || null,\n      quoted: msg,\n      mentions: [merged.senderJid],\n      withImage: true,\n    });\n    if (sentMsg?.key?.id) trackMenu(sentMsg.key.id, merged);\n    return sentMsg;\n  };",
-  'navigation visuelle'
-);
-
-// Les quotes d'un message interactif doivent aussi être reconnues après restart.
-replaceOnce(
-  "      quoted?.videoMessage?.caption || ''",
-  "      quoted?.videoMessage?.caption ||\n      quoted?.viewOnceMessage?.message?.interactiveMessage?.body?.text ||\n      quoted?.viewOnceMessageV2?.message?.interactiveMessage?.body?.text ||\n      quoted?.viewOnceMessageV2Extension?.message?.interactiveMessage?.body?.text || ''",
-  'fallback quote interactif'
-);
-
-// Conserver imageUrl lors d'une reconstruction après restart.
-replaceOnce(
-  "      senderJid: rawSender,\n      currentCategory: null,",
-  "      senderJid: rawSender,\n      imageUrl: rebuilt.imageUrl || null,\n      currentCategory: null,",
-  'image personnalisée reconstruite'
-);
-
-// Appels vers le nouveau renderer de catégorie.
-replaceOnce(
-  '    const text    = buildCategoryDetail(catName, cmds, 1);',
-  "    const text = buildCategoryDetail(entry.style, catName, cmds, 1, entry);",
-  'ouverture catégorie stylée'
-);
-replaceOnce(
-  '      const text = buildCategoryDetail(entry.currentCategory, cmds, targetPage);',
-  "      const text = buildCategoryDetail(entry.style, entry.currentCategory, cmds, targetPage, entry);",
-  'pagination catégorie stylée'
-);
-
-// ALLMENU : remplacer la génération texte générique par le moteur de style actif.
-const allMenuStart = src.indexOf('function buildAllMenuChunks(');
-const allMenuEnd = allMenuStart === -1 ? -1 : src.indexOf('\nmodule.exports = {', allMenuStart);
-if (allMenuStart === -1 || allMenuEnd === -1) {
-  throw new Error('[menu-visual] helper allmenu introuvable après prepare.js');
-}
-const styledAllMenu = String.raw`function buildAllMenuChunks(style, categoryNames, categories, prefixValue, count, context = {}, maxChars = 3200) {
+function TARGET_buildAllMenuChunks(style, categoryNames, categories, prefixValue, count, context = {}, maxChars = 3200) {
   const s = STYLES[style] || STYLES[1];
   const botName = context.botName || config.botName || '𝐓𝐇𝐄 𝐁𝐈𝐆 𝐃𝐈𝐏𝐏𝐄𝐑';
   const ownerName = context.ownerName || 'Trésor';
@@ -282,58 +228,123 @@ const styledAllMenu = String.raw`function buildAllMenuChunks(style, categoryName
   return chunks;
 }
 
-`;
+async function TARGET_allmenuBranch(body, rawSender, isSupreme, sock, extra, msg) {
+  if (body === 'allmenu') {
+    const ctx = buildMenuContext(rawSender, isSupreme, sock);
+    const chunks = buildAllMenuChunks(
+      ctx.styleActif,
+      ctx.categoryNames,
+      ctx.categories,
+      prefix,
+      ctx.count,
+      { ...ctx, senderJid: rawSender }
+    );
+    for (let i = 0; i < chunks.length; i++) {
+      await sendStyledMenuMessage(sock, extra.from, {
+        text: chunks[i],
+        style: ctx.styleActif,
+        imageUrl: ctx.imageUrl || null,
+        quoted: i === 0 ? msg : null,
+        mentions: [rawSender],
+        withImage: i === 0,
+      });
+    }
+    return;
+  }
+}
+
+async function TARGET_initialSend(sock, extra, menuText, styleActif, imageUrl, msg, rawSender) {
+  const sentMsg = await sendStyledMenuMessage(sock, extra.from, {
+    text: menuText,
+    style: styleActif,
+    imageUrl: imageUrl || null,
+    quoted: msg,
+    mentions: [rawSender],
+    withImage: true,
+  });
+}
+
+replaceOnce(
+  "const { getConnectedOwnerName } = require('../../utils/ownerIdentity');",
+  "const { getConnectedOwnerName } = require('../../utils/ownerIdentity');\nconst { proto, prepareWAMessageMedia, generateWAMessageFromContent } = require('@whiskeysockets/baileys');",
+  'imports interactifs Baileys'
+);
+
+const senderHelper = TARGET_sendStyledMenuMessage
+  .toString()
+  .replace('TARGET_sendStyledMenuMessage', 'sendStyledMenuMessage') + '\n\n';
+replaceOnce(
+  '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES — aperçu numéroté + réponse au menu',
+  senderHelper + '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES — aperçu numéroté + réponse au menu',
+  'expéditeur visuel commun'
+);
+
+const styledCategoryDetail = TARGET_buildCategoryDetail
+  .toString()
+  .replace('TARGET_buildCategoryDetail', 'buildCategoryDetail') + '\n\n';
+replaceBlock(
+  'function buildCategoryDetail(catName, cmds, page = 1) {',
+  '// ══════════════════════════════════════════════════════════════\n// 🔎 MOTEUR DE RECHERCHE & CORRECTION FLOUE',
+  styledCategoryDetail,
+  'catégories stylées'
+);
+
+replaceOnce(
+  "  const sendAndTrack = async (text, extraData = {}) => {\n    const sentMsg = await sock.sendMessage(extra.from, { text }, { quoted: msg });\n    if (sentMsg?.key?.id) trackMenu(sentMsg.key.id, { ...entry, ...extraData });\n    return sentMsg;\n  };",
+  "  const sendAndTrack = async (text, extraData = {}) => {\n    const merged = { ...entry, ...extraData };\n    const sentMsg = await sendStyledMenuMessage(sock, extra.from, {\n      text, style: merged.style, imageUrl: merged.imageUrl || null,\n      quoted: msg, mentions: [merged.senderJid], withImage: true,\n    });\n    if (sentMsg?.key?.id) trackMenu(sentMsg.key.id, merged);\n    return sentMsg;\n  };",
+  'navigation visuelle'
+);
+
+replaceOnce(
+  "      quoted?.videoMessage?.caption || ''",
+  "      quoted?.videoMessage?.caption ||\n      quoted?.viewOnceMessage?.message?.interactiveMessage?.body?.text ||\n      quoted?.viewOnceMessageV2?.message?.interactiveMessage?.body?.text ||\n      quoted?.viewOnceMessageV2Extension?.message?.interactiveMessage?.body?.text || ''",
+  'fallback quote interactif'
+);
+
+replaceOnce(
+  "      senderJid: rawSender,\n      currentCategory: null,",
+  "      senderJid: rawSender,\n      imageUrl: rebuilt.imageUrl || null,\n      currentCategory: null,",
+  'image personnalisée reconstruite'
+);
+
+replaceOnce(
+  '    const text    = buildCategoryDetail(catName, cmds, 1);',
+  '    const text = buildCategoryDetail(entry.style, catName, cmds, 1, entry);',
+  'ouverture catégorie stylée'
+);
+replaceOnce(
+  '      const text = buildCategoryDetail(entry.currentCategory, cmds, targetPage);',
+  '      const text = buildCategoryDetail(entry.style, entry.currentCategory, cmds, targetPage, entry);',
+  'pagination catégorie stylée'
+);
+
+const allMenuStart = src.indexOf('function buildAllMenuChunks(');
+const allMenuEnd = allMenuStart === -1 ? -1 : src.indexOf('\nmodule.exports = {', allMenuStart);
+if (allMenuStart === -1 || allMenuEnd === -1) {
+  throw new Error('[menu-visual] helper allmenu introuvable après prepare.js');
+}
+const styledAllMenu = TARGET_buildAllMenuChunks
+  .toString()
+  .replace('TARGET_buildAllMenuChunks', 'buildAllMenuChunks') + '\n\n';
 src = src.slice(0, allMenuStart) + styledAllMenu + src.slice(allMenuEnd);
 console.log('[menu-visual] allmenu stylé appliqué');
 
-// .allmenu : contexte complet, image du style sur le premier bloc et CTA sur tous.
 const allExecStart = src.indexOf("      if (body === 'allmenu') {");
 const allExecEndNeedle = "\n\n      const styleMatch = body.match(/^style(\\d+)$/);";
 const allExecEnd = allExecStart === -1 ? -1 : src.indexOf(allExecEndNeedle, allExecStart);
 if (allExecStart === -1 || allExecEnd === -1) throw new Error('[menu-visual] branche allmenu introuvable');
-const allExecReplacement = String.raw`      if (body === 'allmenu') {
-        const ctx = buildMenuContext(rawSender, isSupreme, sock);
-        const chunks = buildAllMenuChunks(
-          ctx.styleActif,
-          ctx.categoryNames,
-          ctx.categories,
-          prefix,
-          ctx.count,
-          { ...ctx, senderJid: rawSender }
-        );
-        for (let i = 0; i < chunks.length; i++) {
-          await sendStyledMenuMessage(sock, extra.from, {
-            text: chunks[i],
-            style: ctx.styleActif,
-            imageUrl: ctx.imageUrl || null,
-            quoted: i === 0 ? msg : null,
-            mentions: [rawSender],
-            withImage: i === 0,
-          });
-        }
-        return;
-      }`;
-src = src.slice(0, allExecStart) + allExecReplacement + src.slice(allExecEnd);
+const allExecReplacement = bodyOf(TARGET_allmenuBranch);
+src = src.slice(0, allExecStart) + '      ' + allExecReplacement.replace(/\n/g, '\n      ') + src.slice(allExecEnd);
 console.log('[menu-visual] exécution allmenu visuelle appliquée');
 
-// .menu principal passe lui aussi par le même expéditeur, garantissant que
-// l'expérience initiale, les catégories et allmenu ont exactement le même CTA.
 const oldInitialStart = src.indexOf('      // Image personnalisée si configurée et valide, sinon image du style');
 const oldInitialEndNeedle = '\n\n      // Mémorise ce menu pour permettre la navigation par réponse';
 const oldInitialEnd = oldInitialStart === -1 ? -1 : src.indexOf(oldInitialEndNeedle, oldInitialStart);
 if (oldInitialStart === -1 || oldInitialEnd === -1) throw new Error('[menu-visual] bloc envoi menu principal introuvable');
-const newInitial = String.raw`      const sentMsg = await sendStyledMenuMessage(sock, extra.from, {
-        text: menuText,
-        style: styleActif,
-        imageUrl: imageUrl || null,
-        quoted: msg,
-        mentions: [rawSender],
-        withImage: true,
-      });`;
-src = src.slice(0, oldInitialStart) + newInitial + src.slice(oldInitialEnd);
+const initialBody = bodyOf(TARGET_initialSend).replace(/\n/g, '\n      ');
+src = src.slice(0, oldInitialStart) + '      ' + initialBody + src.slice(oldInitialEnd);
 console.log('[menu-visual] menu principal unifié appliqué');
 
-// Le tracking conserve l'image personnalisée.
 replaceOnce(
   '          categoryNames, categories, count, senderJid: rawSender,\n          currentCategory: null,',
   '          categoryNames, categories, count, senderJid: rawSender, imageUrl: imageUrl || null,\n          currentCategory: null,',
