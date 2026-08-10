@@ -176,4 +176,16 @@ async function gcstatusCommand(sock, chatId, m, args, reply) {
 
 }
 
-module.exports = gcstatusCommand;
+// Adaptateur d'export uniquement : la fonction gcstatusCommand ci-dessus
+// n'est pas modifiée et reçoit exactement les mêmes paramètres qu'avant.
+module.exports = {
+    name: 'gc3',
+    aliases: ['gcstatus3'],
+    category: '⚙️ Gestion de groupe',
+    description: 'Publie texte ou média comme statut de groupe via le moteur GC3.',
+    usage: '.gc3 <texte> | répondre à un média',
+
+    async execute(sock, msg, args, extra) {
+        return gcstatusCommand(sock, extra.from, msg, args, extra.reply);
+    },
+};
