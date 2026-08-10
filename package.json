@@ -4,7 +4,7 @@
   "private": true,
   "description": "Private Render deployment wrapper for THE BIG DIPPER",
   "scripts": {
-    "postinstall": "node prepare.js && node stability-patch.js && node persistence-patch.js && cd bot && npm install --omit=dev",
+    "postinstall": "node prepare.js && node stability-patch.js && node persistence-patch.js && node kickall-policy-patch.js && cd bot && npm install --omit=dev",
     "start": "cd bot && npm start"
   },
   "engines": {
