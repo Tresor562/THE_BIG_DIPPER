@@ -4,7 +4,7 @@
   "private": true,
   "description": "Private Render deployment wrapper for THE BIG DIPPER",
   "scripts": {
-    "postinstall": "node --check menu-visual-patch.js && node --check gc-compat-patch.js && node prepare.js && node gc-compat-patch.js && node menu-visual-patch.js && node stability-patch.js && node persistence-patch.js && node kickall-policy-patch.js && node --check bot/commands/general_tools/menu.js && node --check bot/commands/group_management/gc.js && node --check bot/commands/group_management/gc2.js && node --check bot/commands/group_management/gc3.js && node --check bot/commands/group_management/gc4.js && cd bot && npm install --omit=dev",
+    "postinstall": "node --check menu-visual-patch.js && node --check gc-compat-patch.js && node --check welcome-card-patch.js && node prepare.js && node gc-compat-patch.js && node menu-visual-patch.js && node welcome-card-patch.js && node stability-patch.js && node persistence-patch.js && node kickall-policy-patch.js && node --check bot/commands/general_tools/menu.js && node --check bot/commands/group_management/gc.js && node --check bot/commands/group_management/gc2.js && node --check bot/commands/group_management/gc3.js && node --check bot/commands/group_management/gc4.js && node --check bot/utils/welcomeCard.js && node --check bot/handler.js && cd bot && npm install --omit=dev",
     "start": "cd bot && npm start"
   },
   "engines": {
