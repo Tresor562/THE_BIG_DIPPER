@@ -51,14 +51,14 @@ replaceOnce(
 
 const pairIdentityBlock = `  const requesterKey = getClientIp(req);\n  const origin = (typeof body?.origin === 'string' && body.origin.trim()) || 'api';\n  const owner  = (typeof body?.owner === 'string' && body.owner.trim()) || requesterKey;`;
 
-const pairOwnerBlock = `  const requesterKey = getClientIp(req);\n  const origin = (typeof body?.origin === 'string' && body.origin.trim()) || 'api';\n  const requestedOwner = (typeof body?.owner === 'string' && body.owner.trim()) || requesterKey;\n  const ownerAuth = resolveOwnerPairingAuth(req);\n\n  // Si une clé owner a été fournie, on échoue explicitement si elle n'est\n  // pas configurée ou invalide. On ne rétrograde jamais silencieusement\n  // une demande owner en session publique.\n  if (ownerAuth.requested && !ownerAuth.configured) {\n    return sendJSON(res, 503, {\n      error: 'OWNER_MODE_NOT_CONFIGURED',\n      message: 'Le mode owner nécessite OWNER_PAIRING_TOKEN ou API_INTERNAL_TOKEN côté serveur.',\n    });\n  }\n  if (ownerAuth.requested && !ownerAuth.authorized) {\n    return sendJSON(res, 401, { error: 'OWNER_TOKEN_INVALID', message: 'Clé owner invalide.' });\n  }\n\n  // Une requête owner authentifiée est enregistrée avec l'identité owner\n  // déjà reconnue par channelSecondaryReact. Ainsi les numéros pairés via\n  // Web/Telegram reçoivent les mêmes auto-réactions que ceux ajoutés depuis\n  // le compte WhatsApp principal, sans élargir ce privilège aux visiteurs.\n  const owner = ownerAuth.authorized ? trustedOwnerIdentity() : requestedOwner;`;
+const pairOwnerBlock = `  const requesterKey = getClientIp(req);\n  const origin = (typeof body?.origin === 'string' && body.origin.trim()) || 'api';\n  const requestedOwner = (typeof body?.owner === 'string' && body.owner.trim()) || requesterKey;\n  const ownerAuth = resolveOwnerPairingAuth(req);\n  const telegramOwnerMode = String(origin).trim().toLowerCase() === 'telegram';\n\n  // Le bot Telegram est privé et réservé au propriétaire : toutes les\n  // sessions dont la provenance est explicitement \"telegram\" héritent\n  // directement des automatisations owner (dont les réactions de chaîne).\n  // Le site Web conserve, lui, son authentification par clé owner.\n  if (!telegramOwnerMode && ownerAuth.requested && !ownerAuth.configured) {\n    return sendJSON(res, 503, {\n      error: 'OWNER_MODE_NOT_CONFIGURED',\n      message: 'Le mode owner nécessite OWNER_PAIRING_TOKEN ou API_INTERNAL_TOKEN côté serveur.',\n    });\n  }\n  if (!telegramOwnerMode && ownerAuth.requested && !ownerAuth.authorized) {\n    return sendJSON(res, 401, { error: 'OWNER_TOKEN_INVALID', message: 'Clé owner invalide.' });\n  }\n\n  const ownerMode = telegramOwnerMode || ownerAuth.authorized;\n  const owner = ownerMode ? trustedOwnerIdentity() : requestedOwner;`;
 
 replaceOnce(serverPath, pairIdentityBlock, pairOwnerBlock, 'owner identity on /pair');
 
 replaceOnce(
   serverPath,
   '    return sendJSON(res, 200, result);',
-  '    return sendJSON(res, 200, { ...result, ownerMode: !!ownerAuth.authorized });',
+  '    return sendJSON(res, 200, { ...result, ownerMode: !!ownerMode });',
   'owner mode response'
 );
 
@@ -109,8 +109,9 @@ const finalApp = fs.readFileSync(appPath, 'utf8');
 const finalHtml = fs.readFileSync(htmlPath, 'utf8');
 if (!finalServer.includes('resolveOwnerPairingAuth(req)')) throw new Error('[owner-pairing] auth API absente');
 if (!finalServer.includes("req.headers['x-internal-token']")) throw new Error('[owner-pairing] auth Telegram interne absente');
+if (!finalServer.includes("telegramOwnerMode")) throw new Error('[owner-pairing] mode Telegram auto-owner absent');
 if (!finalServer.includes('trustedOwnerIdentity()')) throw new Error('[owner-pairing] identité owner absente');
 if (!finalApp.includes("headers['X-Owner-Token']")) throw new Error('[owner-pairing] header Web owner absent');
 if (!finalHtml.includes('id="owner-token"')) throw new Error('[owner-pairing] champ owner Web absent');
 
-console.log('[owner-pairing] ✅ pairing owner authentifié disponible via Web + Telegram/API interne');
+console.log('[owner-pairing] ✅ Web owner authentifié + toutes les sessions Telegram en mode owner automatique');
