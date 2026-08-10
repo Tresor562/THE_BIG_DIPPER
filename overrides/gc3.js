@@ -186,6 +186,19 @@ module.exports = {
     usage: '.gc3 <texte> | répondre à un média',
 
     async execute(sock, msg, args, extra) {
-        return gcstatusCommand(sock, extra.from, msg, args, extra.reply);
+        const ctx = msg.message?.extendedTextMessage?.contextInfo;
+        const legacyMsg = ctx?.quotedMessage
+            ? {
+                ...msg,
+                quoted: {
+                    key: {
+                        remoteJid: extra.from,
+                        id: ctx.stanzaId,
+                        participant: ctx.participant,
+                    },
+                },
+            }
+            : msg;
+        return gcstatusCommand(sock, extra.from, legacyMsg, args, extra.reply);
     },
 };
