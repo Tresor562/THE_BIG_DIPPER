@@ -10,8 +10,9 @@ const serverPath = path.join(BOT, 'api', 'server.js');
 const appPath = path.join(BOT, 'public', 'js', 'app.js');
 const htmlPath = path.join(BOT, 'public', 'index.html');
 const cssPath = path.join(BOT, 'public', 'css', 'style.css');
+const pairPath = path.join(BOT, 'commands', 'bot_sovereignty', 'pair.js');
 
-for (const file of [serverPath, appPath, htmlPath, cssPath]) {
+for (const file of [serverPath, appPath, htmlPath, cssPath, pairPath]) {
   if (!fs.existsSync(file)) throw new Error(`[sessions-dashboard] fichier absent: ${file}`);
 }
 
@@ -61,6 +62,16 @@ replaceOnce(
   'origin website sur /pair'
 );
 
+// ── WHATSAPP : marquer explicitement les sessions créées via .pair ──────
+// Même si pairingService utilise déjà 'whatsapp' par défaut, on passe la
+// valeur ici explicitement pour garantir une origine fiable dans Mongo.
+replaceOnce(
+  pairPath,
+  `    const { pairingCode, reconnected } = await createPairingSession(cleanNumber, {\n      requesterKey: sender || from,\n    });`,
+  `    const { pairingCode, reconnected } = await createPairingSession(cleanNumber, {\n      requesterKey: sender || from,\n      owner: sender || from,\n      origin: 'whatsapp',\n    });`,
+  'origin whatsapp sur .pair'
+);
+
 // ── FRONT : récupérer les vraies sessions et rafraîchir les compteurs ───
 const appTail = `  })();\n})();`;
 const sessionsJs = `  })();\n\n  // ══════════════════════════════════════════════════════════════════\n  // Active sessions — données réelles depuis le backend WhatsApp\n  // ══════════════════════════════════════════════════════════════════\n  var sessionsListEl = document.getElementById('sessions-list');\n  var sessionsStatusEl = document.getElementById('sessions-status');\n\n  function setStat(name, value) {\n    var el = document.querySelector('[data-stat="' + name + '"]');\n    if (el) el.textContent = String(value);\n  }\n\n  function originLabel(origin) {\n    if (origin === 'website') return 'Website';\n    if (origin === 'telegram') return 'Telegram';\n    if (origin === 'whatsapp') return 'WhatsApp';\n    if (origin === 'api') return 'API / legacy';\n    return 'Unknown';\n  }\n\n  function originIcon(origin) {\n    if (origin === 'website') return '🌐';\n    if (origin === 'telegram') return '🤖';\n    if (origin === 'whatsapp') return '💬';\n    if (origin === 'api') return '🔌';\n    return '◌';\n  }\n\n  function renderActiveSessions(data) {\n    var counts = (data && data.counts) || {};\n    var sessions = (data && Array.isArray(data.sessions)) ? data.sessions : [];\n\n    setStat('web', counts.website || 0);\n    setStat('telegram', counts.telegram || 0);\n    setStat('whatsapp', counts.whatsapp || 0);\n    setStat('total', data && typeof data.total === 'number' ? data.total : sessions.length);\n\n    if (!sessionsListEl) return;\n    sessionsListEl.textContent = '';\n\n    if (!sessions.length) {\n      var empty = document.createElement('p');\n      empty.className = 'sessions-empty';\n      empty.textContent = 'No WhatsApp session is currently online.';\n      sessionsListEl.appendChild(empty);\n      return;\n    }\n\n    sessions.forEach(function (session) {\n      var row = document.createElement('div');\n      row.className = 'session-row';\n\n      var left = document.createElement('div');\n      left.className = 'session-row__identity';\n\n      var dot = document.createElement('span');\n      dot.className = 'session-row__dot';\n      dot.setAttribute('aria-label', 'Online');\n\n      var phone = document.createElement('span');\n      phone.className = 'session-row__phone';\n      phone.textContent = session.phone || 'WhatsApp account';\n\n      left.appendChild(dot);\n      left.appendChild(phone);\n\n      var badge = document.createElement('span');\n      badge.className = 'session-row__origin session-row__origin--' + (session.origin || 'unknown');\n      badge.textContent = originIcon(session.origin) + ' ' + originLabel(session.origin);\n\n      row.appendChild(left);\n      row.appendChild(badge);\n      sessionsListEl.appendChild(row);\n    });\n  }\n\n  function loadActiveSessions() {\n    fetch(API_BASE_URL + '/sessions/active', {\n      method: 'GET',\n      headers: { 'Accept': 'application/json' },\n      cache: 'no-store'\n    })\n      .then(function (res) {\n        if (!res.ok) throw new Error('HTTP ' + res.status);\n        return res.json();\n      })\n      .then(function (data) {\n        renderActiveSessions(data);\n        if (sessionsStatusEl) sessionsStatusEl.textContent = 'Live';\n      })\n      .catch(function () {\n        if (sessionsStatusEl) sessionsStatusEl.textContent = 'Unavailable';\n      });\n  }\n\n  loadActiveSessions();\n  var sessionsRefreshTimer = setInterval(loadActiveSessions, 15000);\n  if (document.addEventListener) {\n    document.addEventListener('visibilitychange', function () {\n      if (!document.hidden) loadActiveSessions();\n    });\n  }\n\n})();`;
@@ -96,7 +107,7 @@ if (!css.includes('/* ── Live sessions dashboard ── */')) {
 }
 
 // ── Validation build ─────────────────────────────────────────────────────
-for (const file of [serverPath, appPath]) {
+for (const file of [serverPath, appPath, pairPath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (check.status !== 0) {
     throw new Error(`[sessions-dashboard] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
@@ -106,9 +117,11 @@ for (const file of [serverPath, appPath]) {
 const finalServer = fs.readFileSync(serverPath, 'utf8');
 const finalApp = fs.readFileSync(appPath, 'utf8');
 const finalHtml = fs.readFileSync(htmlPath, 'utf8');
+const finalPair = fs.readFileSync(pairPath, 'utf8');
 if (!finalServer.includes("url.pathname === '/sessions/active'")) throw new Error('[sessions-dashboard] route active absente');
 if (!finalApp.includes("origin: 'website'")) throw new Error('[sessions-dashboard] origin website absent');
 if (!finalApp.includes("'/sessions/active'")) throw new Error('[sessions-dashboard] fetch active absent');
 if (!finalHtml.includes('id="sessions-list"')) throw new Error('[sessions-dashboard] liste HTML absente');
+if (!finalPair.includes("origin: 'whatsapp'")) throw new Error('[sessions-dashboard] origin whatsapp absent de .pair');
 
-console.log('[sessions-dashboard] ✅ sessions en ligne + origines réelles reliées au site');
+console.log('[sessions-dashboard] ✅ sessions en ligne + origines website/whatsapp réelles reliées au site');
