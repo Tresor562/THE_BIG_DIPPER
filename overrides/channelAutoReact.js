@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
+const { FOLLOW_DELAY_MS } = require('./channelAutoFollow');
 
 const MAX_SEEN = 500;
 const STORE_FILE = path.join(process.cwd(), 'database', 'main_channel_reactions.json');
@@ -62,42 +63,15 @@ function chooseReactionEmoji(text, rawMessage) {
   const m = unwrapMessage(rawMessage);
 
   const rules = [
-    {
-      emoji: '🛡️',
-      test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/,
-    },
-    {
-      emoji: '🤖',
-      test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/,
-    },
-    {
-      emoji: '💻',
-      test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/,
-    },
-    {
-      emoji: '💡',
-      test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/,
-    },
-    {
-      emoji: '🚀',
-      test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/,
-    },
-    {
-      emoji: '🎉',
-      test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/,
-    },
-    {
-      emoji: '❤️',
-      test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/,
-    },
-    {
-      emoji: '👏',
-      test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/,
-    },
-    {
-      emoji: '🔥',
-      test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/,
-    },
+    { emoji: '🛡️', test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/ },
+    { emoji: '🤖', test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/ },
+    { emoji: '💻', test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/ },
+    { emoji: '💡', test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/ },
+    { emoji: '🚀', test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/ },
+    { emoji: '🎉', test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/ },
+    { emoji: '❤️', test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/ },
+    { emoji: '👏', test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/ },
+    { emoji: '🔥', test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/ },
   ];
 
   for (const rule of rules) {
@@ -111,21 +85,24 @@ function chooseReactionEmoji(text, rawMessage) {
   return '👍';
 }
 
-function readLocalSeen() {
+function readLocalState() {
   try {
     const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    return Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [];
+    return {
+      ids: Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [],
+      reactNext: typeof parsed?.reactNext === 'boolean' ? parsed.reactNext : true,
+    };
   } catch (_) {
-    return [];
+    return { ids: [], reactNext: true };
   }
 }
 
-function writeLocalSeen(ids) {
+function writeLocalState(ids, reactNext) {
   try {
     fs.mkdirSync(path.dirname(STORE_FILE), { recursive: true });
     fs.writeFileSync(
       STORE_FILE,
-      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), updatedAt: new Date().toISOString() }, null, 2)
+      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), reactNext, updatedAt: new Date().toISOString() }, null, 2)
     );
   } catch (_) {}
 }
@@ -139,28 +116,30 @@ async function getMongoDb() {
   }
 }
 
-async function loadSeen() {
-  const ids = new Set(readLocalSeen());
+async function loadState() {
+  const local = readLocalState();
+  const state = { seen: new Set(local.ids), reactNext: local.reactNext };
   const db = await getMongoDb();
   if (db) {
     try {
       const doc = await db.collection(MONGO_COLLECTION).findOne({ _id: MONGO_DOC_ID });
-      for (const id of doc?.recentServerIds || []) ids.add(String(id));
+      for (const id of doc?.recentServerIds || []) state.seen.add(String(id));
+      if (typeof doc?.reactNext === 'boolean') state.reactNext = doc.reactNext;
     } catch (_) {}
   }
-  return ids;
+  return state;
 }
 
-async function persistSeen(seen) {
-  const ids = Array.from(seen).slice(-MAX_SEEN);
-  writeLocalSeen(ids);
+async function persistState(state) {
+  const ids = Array.from(state.seen).slice(-MAX_SEEN);
+  writeLocalState(ids, state.reactNext);
 
   const db = await getMongoDb();
   if (db) {
     try {
       await db.collection(MONGO_COLLECTION).updateOne(
         { _id: MONGO_DOC_ID },
-        { $set: { recentServerIds: ids, updatedAt: new Date() } },
+        { $set: { recentServerIds: ids, reactNext: state.reactNext, updatedAt: new Date() } },
         { upsert: true }
       );
     } catch (err) {
@@ -194,15 +173,16 @@ async function installMainChannelAutoReact(sock) {
     return;
   }
 
-  const seenPromise = loadSeen();
+  const statePromise = loadState();
   sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue || Promise.resolve();
 
-  // Le follow est effectué juste avant par channelAutoFollow. On demande ensuite
-  // les live updates pour recevoir les nouvelles publications sans scruter la chaîne.
-  setTimeout(() => subscribeToLiveUpdates(sock, jid).catch(() => {}), 2000);
+  const liveTimer = setTimeout(
+    () => subscribeToLiveUpdates(sock, jid).catch(() => {}),
+    FOLLOW_DELAY_MS + 2000
+  );
+  if (liveTimer.unref) liveTimer.unref();
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
-    // Réagir uniquement aux NOUVELLES publications, jamais à l'historique synchronisé.
     if (type !== 'notify') return;
 
     for (const msg of messages || []) {
@@ -217,23 +197,27 @@ async function installMainChannelAutoReact(sock) {
 
       sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue
         .then(async () => {
-          const seen = await seenPromise;
-          if (seen.has(serverId)) return;
+          const state = await statePromise;
+          if (state.seen.has(serverId)) return;
+
+          const shouldReact = state.reactNext;
+          state.reactNext = !state.reactNext;
+          state.seen.add(serverId);
+          while (state.seen.size > MAX_SEEN) {
+            const oldest = state.seen.values().next().value;
+            state.seen.delete(oldest);
+          }
+          await persistState(state);
+
+          if (!shouldReact) {
+            console.log(`[ChannelReact] ⏭️ Publication ${serverId} ignorée — alternance 1 sur 2`);
+            return;
+          }
 
           const text = extractPublicationText(msg);
           const emoji = chooseReactionEmoji(text, msg.message);
-
-          // Petit délai naturel et surtout temps laissé à WhatsApp pour finaliser
-          // l'enregistrement serveur de la publication avant la réaction.
           await wait(2200);
           await sock.newsletterReactMessage(jid, serverId, emoji);
-
-          seen.add(serverId);
-          while (seen.size > MAX_SEEN) {
-            const oldest = seen.values().next().value;
-            seen.delete(oldest);
-          }
-          await persistSeen(seen);
           console.log(`[ChannelReact] ✅ Publication ${serverId} → ${emoji}`);
         })
         .catch(err => {
@@ -242,7 +226,7 @@ async function installMainChannelAutoReact(sock) {
     }
   });
 
-  console.log(`[ChannelReact] ✅ Auto-réactions intelligentes activées sur le compte principal → ${jid}`);
+  console.log(`[ChannelReact] ✅ Auto-réactions 1 publication sur 2 activées sur le compte principal → ${jid}`);
 }
 
 module.exports = {
