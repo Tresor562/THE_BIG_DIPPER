@@ -1,0 +1,27 @@
+name: Audit deployed menu images
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Generate every welcome and goodbye background
+        run: node scripts/test-welcome-backgrounds.js
+      - name: Audit final deployed style image URLs
+        run: node scripts/audit-deployed-menu-images.js
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: menu-image-audit
+          path: menu-image-audit.json
+          if-no-files-found: error
