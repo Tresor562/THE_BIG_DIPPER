@@ -27,41 +27,6 @@ function patch(rel, search, replacement, marker, label) {
 fs.copyFileSync(path.join(OVERRIDES, 'mongoAuth.js'), path.join(BOT, 'utils', 'mongoAuth.js'));
 console.log('[persistence] utils/mongoAuth.js durable installé');
 
-// ── Heartbeat message : 10 minutes pour chaque socket ────────────────────
-const selfKeepAlivePath = path.join(BOT, 'utils', 'selfKeepAlive.js');
-fs.writeFileSync(selfKeepAlivePath, `'use strict';
-const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;
-function getSelfJid(sock) {
-  const candidates = [sock?.user?.jid, sock?.user?.id].filter(Boolean);
-  for (const raw of candidates) {
-    const number = String(raw).split(':')[0].split('@')[0].replace(/\\D/g, '');
-    if (number.length >= 7) return \`${'${number}'}@s.whatsapp.net\`;
-  }
-  return null;
-}
-function startSelfKeepAlive(sock, opts = {}) {
-  const intervalMs = Number(opts.intervalMs) > 0 ? Number(opts.intervalMs) : DEFAULT_INTERVAL_MS;
-  const label = opts.label || 'session';
-  const sendHeartbeat = async () => {
-    const selfJid = getSelfJid(sock);
-    if (!selfJid) return;
-    try {
-      await sock.sendMessage(selfJid, {
-        text: '🟢 *THE BIG DIPPER — KEEP ALIVE*\\n\\n⏱️ Session active\\n> _Heartbeat automatique toutes les 10 minutes_'
-      });
-      console.log(\`[KeepAlive] ✅ ${'${label}'} → ${'${selfJid}'}\`);
-    } catch (err) {
-      console.warn(\`[KeepAlive] ⚠️ ${'${label}'}: ${'${err?.message || err}'}\`);
-    }
-  };
-  const timer = setInterval(sendHeartbeat, intervalMs);
-  if (timer.unref) timer.unref();
-  return timer;
-}
-module.exports = { DEFAULT_INTERVAL_MS, getSelfJid, startSelfKeepAlive };
-`);
-console.log('[persistence] heartbeat WhatsApp réglé à 10 minutes');
-
 // ── MULTISESSION : credentials dans MongoDB ──────────────────────────────
 patch(
   'utils/sessionManager.js',
@@ -94,8 +59,8 @@ patch(
 // ── SESSION PRINCIPALE : même collection persistante session_<numéro> ───
 patch(
   'index.js',
-  "const { startSelfKeepAlive } = require('./utils/selfKeepAlive');",
-  "const { startSelfKeepAlive } = require('./utils/selfKeepAlive');\nconst { useMongoAuthState, hasMongoAuthState, importLocalAuthDirectoryToMongo } = require('./utils/mongoAuth');",
+  "const sessionContext = require('./utils/sessionContext'); // [PHASE 1] isolation données — voir utils/sessionContext.js",
+  "const sessionContext = require('./utils/sessionContext'); // [PHASE 1] isolation données — voir utils/sessionContext.js\nconst { useMongoAuthState, hasMongoAuthState, importLocalAuthDirectoryToMongo } = require('./utils/mongoAuth');",
   "importLocalAuthDirectoryToMongo } = require('./utils/mongoAuth')",
   'imports Mongo session principale'
 );
@@ -112,4 +77,4 @@ patch(
   'auth Mongo session principale'
 );
 
-console.log('[persistence] ✅ Credentials WhatsApp persistants Mongo + heartbeat 10 min prêts.');
+console.log('[persistence] ✅ Credentials WhatsApp persistants Mongo prêts.');

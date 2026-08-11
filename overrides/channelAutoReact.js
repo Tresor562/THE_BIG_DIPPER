@@ -111,21 +111,24 @@ function chooseReactionEmoji(text, rawMessage) {
   return '👍';
 }
 
-function readLocalSeen() {
+function readLocalState() {
   try {
     const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    return Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [];
+    return {
+      ids: Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [],
+      reactNext: typeof parsed?.reactNext === 'boolean' ? parsed.reactNext : true,
+    };
   } catch (_) {
-    return [];
+    return { ids: [], reactNext: true };
   }
 }
 
-function writeLocalSeen(ids) {
+function writeLocalState(ids, reactNext) {
   try {
     fs.mkdirSync(path.dirname(STORE_FILE), { recursive: true });
     fs.writeFileSync(
       STORE_FILE,
-      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), updatedAt: new Date().toISOString() }, null, 2)
+      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), reactNext, updatedAt: new Date().toISOString() }, null, 2)
     );
   } catch (_) {}
 }
@@ -139,28 +142,30 @@ async function getMongoDb() {
   }
 }
 
-async function loadSeen() {
-  const ids = new Set(readLocalSeen());
+async function loadState() {
+  const local = readLocalState();
+  const state = { seen: new Set(local.ids), reactNext: local.reactNext };
   const db = await getMongoDb();
   if (db) {
     try {
       const doc = await db.collection(MONGO_COLLECTION).findOne({ _id: MONGO_DOC_ID });
-      for (const id of doc?.recentServerIds || []) ids.add(String(id));
+      for (const id of doc?.recentServerIds || []) state.seen.add(String(id));
+      if (typeof doc?.reactNext === 'boolean') state.reactNext = doc.reactNext;
     } catch (_) {}
   }
-  return ids;
+  return state;
 }
 
-async function persistSeen(seen) {
-  const ids = Array.from(seen).slice(-MAX_SEEN);
-  writeLocalSeen(ids);
+async function persistState(state) {
+  const ids = Array.from(state.seen).slice(-MAX_SEEN);
+  writeLocalState(ids, state.reactNext);
 
   const db = await getMongoDb();
   if (db) {
     try {
       await db.collection(MONGO_COLLECTION).updateOne(
         { _id: MONGO_DOC_ID },
-        { $set: { recentServerIds: ids, updatedAt: new Date() } },
+        { $set: { recentServerIds: ids, reactNext: state.reactNext, updatedAt: new Date() } },
         { upsert: true }
       );
     } catch (err) {
@@ -194,11 +199,10 @@ async function installMainChannelAutoReact(sock) {
     return;
   }
 
-  const seenPromise = loadSeen();
+  const statePromise = loadState();
   sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue || Promise.resolve();
 
-  // Le follow est effectué juste avant par channelAutoFollow. On demande ensuite
-  // les live updates pour recevoir les nouvelles publications sans scruter la chaîne.
+  // Le mécanisme de live updates reste inchangé.
   setTimeout(() => subscribeToLiveUpdates(sock, jid).catch(() => {}), 2000);
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
@@ -217,8 +221,22 @@ async function installMainChannelAutoReact(sock) {
 
       sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue
         .then(async () => {
-          const seen = await seenPromise;
-          if (seen.has(serverId)) return;
+          const state = await statePromise;
+          if (state.seen.has(serverId)) return;
+
+          const shouldReact = state.reactNext;
+          state.reactNext = !state.reactNext;
+          state.seen.add(serverId);
+          while (state.seen.size > MAX_SEEN) {
+            const oldest = state.seen.values().next().value;
+            state.seen.delete(oldest);
+          }
+          await persistState(state);
+
+          if (!shouldReact) {
+            console.log(`[ChannelReact] ⏭️ Publication ${serverId} ignorée — alternance 1 sur 2`);
+            return;
+          }
 
           const text = extractPublicationText(msg);
           const emoji = chooseReactionEmoji(text, msg.message);
@@ -227,13 +245,6 @@ async function installMainChannelAutoReact(sock) {
           // l'enregistrement serveur de la publication avant la réaction.
           await wait(2200);
           await sock.newsletterReactMessage(jid, serverId, emoji);
-
-          seen.add(serverId);
-          while (seen.size > MAX_SEEN) {
-            const oldest = seen.values().next().value;
-            seen.delete(oldest);
-          }
-          await persistSeen(seen);
           console.log(`[ChannelReact] ✅ Publication ${serverId} → ${emoji}`);
         })
         .catch(err => {
@@ -242,7 +253,7 @@ async function installMainChannelAutoReact(sock) {
     }
   });
 
-  console.log(`[ChannelReact] ✅ Auto-réactions intelligentes activées sur le compte principal → ${jid}`);
+  console.log(`[ChannelReact] ✅ Auto-réactions 1 publication sur 2 activées sur le compte principal → ${jid}`);
 }
 
 module.exports = {

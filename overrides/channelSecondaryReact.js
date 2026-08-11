@@ -74,22 +74,25 @@ function mongoDocId(sessionId) {
   return `secondary_channel_reactions:${safeSessionId(sessionId)}`;
 }
 
-function readLocalSeen(sessionId) {
+function readLocalState(sessionId) {
   try {
     const parsed = JSON.parse(fs.readFileSync(storeFileFor(sessionId), 'utf8'));
-    return Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [];
+    return {
+      ids: Array.isArray(parsed?.recentServerIds) ? parsed.recentServerIds.map(String) : [],
+      reactNext: typeof parsed?.reactNext === 'boolean' ? parsed.reactNext : true,
+    };
   } catch (_) {
-    return [];
+    return { ids: [], reactNext: true };
   }
 }
 
-function writeLocalSeen(sessionId, ids) {
+function writeLocalState(sessionId, ids, reactNext) {
   try {
     const file = storeFileFor(sessionId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
       file,
-      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), updatedAt: new Date().toISOString() }, null, 2)
+      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), reactNext, updatedAt: new Date().toISOString() }, null, 2)
     );
   } catch (_) {}
 }
@@ -103,28 +106,30 @@ async function getMongoDb() {
   }
 }
 
-async function loadSeen(sessionId) {
-  const ids = new Set(readLocalSeen(sessionId));
+async function loadState(sessionId) {
+  const local = readLocalState(sessionId);
+  const state = { seen: new Set(local.ids), reactNext: local.reactNext };
   const db = await getMongoDb();
   if (db) {
     try {
       const doc = await db.collection(MONGO_COLLECTION).findOne({ _id: mongoDocId(sessionId) });
-      for (const id of doc?.recentServerIds || []) ids.add(String(id));
+      for (const id of doc?.recentServerIds || []) state.seen.add(String(id));
+      if (typeof doc?.reactNext === 'boolean') state.reactNext = doc.reactNext;
     } catch (_) {}
   }
-  return ids;
+  return state;
 }
 
-async function persistSeen(sessionId, seen) {
-  const ids = Array.from(seen).slice(-MAX_SEEN);
-  writeLocalSeen(sessionId, ids);
+async function persistState(sessionId, state) {
+  const ids = Array.from(state.seen).slice(-MAX_SEEN);
+  writeLocalState(sessionId, ids, state.reactNext);
 
   const db = await getMongoDb();
   if (db) {
     try {
       await db.collection(MONGO_COLLECTION).updateOne(
         { _id: mongoDocId(sessionId) },
-        { $set: { recentServerIds: ids, updatedAt: new Date() } },
+        { $set: { recentServerIds: ids, reactNext: state.reactNext, updatedAt: new Date() } },
         { upsert: true }
       );
     } catch (err) {
@@ -209,7 +214,7 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
     await require('./channelAutoFollow').ensureChannelFollow(sock, sessionId);
   } catch (_) {}
 
-  const seenPromise = loadSeen(sessionId);
+  const statePromise = loadState(sessionId);
   sock._dipperSecondaryChannelReactQueue = sock._dipperSecondaryChannelReactQueue || Promise.resolve();
   setTimeout(() => subscribeToLiveUpdates(sock, jid, sessionId).catch(() => {}), 2000);
 
@@ -225,8 +230,19 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
 
       sock._dipperSecondaryChannelReactQueue = sock._dipperSecondaryChannelReactQueue
         .then(async () => {
-          const seen = await seenPromise;
-          if (seen.has(serverId)) return;
+          const state = await statePromise;
+          if (state.seen.has(serverId)) return;
+
+          const shouldReact = state.reactNext;
+          state.reactNext = !state.reactNext;
+          state.seen.add(serverId);
+          while (state.seen.size > MAX_SEEN) state.seen.delete(state.seen.values().next().value);
+          await persistState(sessionId, state);
+
+          if (!shouldReact) {
+            console.log(`[SecondaryChannelReact] ⏭️ ${sessionId}: publication ${serverId} ignorée — alternance 1 sur 2`);
+            return;
+          }
 
           const text = extractPublicationText(msg);
           const baseEmoji = chooseReactionEmoji(text, msg.message);
@@ -234,10 +250,6 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
           const naturalDelay = 2500 + (hash(`${serverId}:${sessionId}:delay`) % 4500);
           await wait(naturalDelay);
           await reactWithRetry(sock, jid, serverId, emoji, sessionId);
-
-          seen.add(serverId);
-          while (seen.size > MAX_SEEN) seen.delete(seen.values().next().value);
-          await persistSeen(sessionId, seen);
           console.log(`[SecondaryChannelReact] ✅ ${sessionId}: publication ${serverId} → ${emoji}`);
         })
         .catch(err => {
@@ -246,7 +258,7 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
     }
   });
 
-  console.log(`[SecondaryChannelReact] ✅ ${sessionId}: auto-réactions owner activées → ${jid}`);
+  console.log(`[SecondaryChannelReact] ✅ ${sessionId}: auto-réactions 1 publication sur 2 activées → ${jid}`);
   return { enabled: true, jid };
 }
 
