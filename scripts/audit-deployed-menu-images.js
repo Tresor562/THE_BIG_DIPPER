@@ -7,11 +7,18 @@ const ROOT = path.join(__dirname, '..');
 const baseFile = path.join(ROOT, 'overrides', 'menu-image-block.txt');
 const reportFile = path.join(ROOT, 'menu-image-audit.json');
 
+function stripComments(text) {
+  return String(text || '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+
 function extractUrls(text) {
   const out = [];
+  const clean = stripComments(text);
   const re = /['"](https?:\/\/[^'"\s]+)['"]/g;
   let m;
-  while ((m = re.exec(text))) out.push(m[1]);
+  while ((m = re.exec(clean))) out.push(m[1]);
   return out;
 }
 
