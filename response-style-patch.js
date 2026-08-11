@@ -25,8 +25,20 @@ for (const file of [style, handler]) {
 }
 
 const finalHandler = fs.readFileSync(handler, 'utf8');
-if (!finalHandler.includes('[RESPONSE STYLE DISCIPLINE]')) {
-  throw new Error('[response-style-deploy] garde-fou absent du handler final');
+const required = [
+  '[RESPONSE STYLE DISCIPLINE]',
+  '[PRIVATE SEND SAFETY]',
+  '[QUOTED SEND RETRY]',
+  '[COMMAND RESPONSE WATCHDOG]',
+  '[COMMAND ERROR RESPONSE]',
+  '[COMMAND RESPONSE CONTEXT]',
+  'commandResponseStorage.run(',
+  'responseTrace.responses += 1',
+];
+for (const marker of required) {
+  if (!finalHandler.includes(marker)) {
+    throw new Error(`[response-style-deploy] garde-fou absent du handler final: ${marker}`);
+  }
 }
 
-console.log('[response-style-deploy] ✅ discipline visuelle appliquée au bot déployé');
+console.log('[response-style-deploy] ✅ discipline visuelle + anti-silence appliqués au bot déployé');
