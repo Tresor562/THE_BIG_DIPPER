@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const { chooseReactionEmoji, extractPublicationText } = require('./channelAutoReact');
-const { FOLLOW_DELAY_MS } = require('./channelAutoFollow');
 
 const MAX_SEEN = 400;
 const MONGO_COLLECTION = 'bot_runtime_config';
@@ -217,12 +216,7 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
 
   const statePromise = loadState(sessionId);
   sock._dipperSecondaryChannelReactQueue = sock._dipperSecondaryChannelReactQueue || Promise.resolve();
-
-  const liveTimer = setTimeout(
-    () => subscribeToLiveUpdates(sock, jid, sessionId).catch(() => {}),
-    FOLLOW_DELAY_MS + 2000
-  );
-  if (liveTimer.unref) liveTimer.unref();
+  setTimeout(() => subscribeToLiveUpdates(sock, jid, sessionId).catch(() => {}), 2000);
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify') return;
