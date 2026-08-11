@@ -37,6 +37,12 @@ const gc4 = fs.readFileSync(gc4Path, 'utf8');
 if (!gc2.includes("name: 'gc2'") || !gc2.includes('async execute(sock, msg, args, extra)')) {
   throw new Error('[gc-compat] gc2 n\'est pas exposé au format DIPPER');
 }
+if (!gc2.includes("aliases: ['upswgc']")) {
+  throw new Error('[gc-compat] gc2 doit conserver uniquement l\'alias unique upswgc');
+}
+if (/aliases\s*:\s*\[[^\]]*['\"]gcstatus['\"]/s.test(gc2)) {
+  throw new Error('[gc-compat] collision interdite: gcstatus appartient à groupstatus.js');
+}
 if (!gc3.includes("name: 'gc3'") || !gc3.includes('async execute(sock, msg, args, extra)')) {
   throw new Error('[gc-compat] gc3 n\'est pas exposé au format DIPPER');
 }
