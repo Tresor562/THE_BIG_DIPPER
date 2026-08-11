@@ -4,14 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const ROOT = __dirname;
-const BOT = path.join(ROOT, 'bot');
+const BOT = path.join(__dirname, 'bot');
+if (!fs.existsSync(BOT)) throw new Error('[runtime-core] bot/ absent — sous-module non cloné.');
 
-if (!fs.existsSync(BOT)) {
-  throw new Error('[runtime-core] bot/ absent — sous-module non cloné.');
-}
-
-function replaceOnce(rel, search, replacement, marker, label) {
+function patch(rel, search, replacement, marker, label) {
   const file = path.join(BOT, rel);
   let src = fs.readFileSync(file, 'utf8');
   if (marker && src.includes(marker)) {
@@ -19,43 +15,21 @@ function replaceOnce(rel, search, replacement, marker, label) {
     return;
   }
   const count = src.split(search).length - 1;
-  if (count !== 1) {
-    throw new Error(`[runtime-core] ${label}: attendu 1 occurrence, trouvé ${count}`);
-  }
-  src = src.replace(search, replacement);
-  fs.writeFileSync(file, src);
+  if (count !== 1) throw new Error(`[runtime-core] ${label}: attendu 1 occurrence, trouvé ${count}`);
+  fs.writeFileSync(file, src.replace(search, replacement));
   console.log(`[runtime-core] ${label} appliqué`);
-}
-
-function replaceAll(rel, search, replacement, minCount, label) {
-  const file = path.join(BOT, rel);
-  let src = fs.readFileSync(file, 'utf8');
-  const count = src.split(search).length - 1;
-  if (count < minCount) {
-    if (src.includes(replacement)) {
-      console.log(`[runtime-core] ${label} déjà appliqué`);
-      return;
-    }
-    throw new Error(`[runtime-core] ${label}: attendu >= ${minCount} occurrence(s), trouvé ${count}`);
-  }
-  src = src.split(search).join(replacement);
-  fs.writeFileSync(file, src);
-  console.log(`[runtime-core] ${label} appliqué (${count})`);
 }
 
 function check(rel) {
   const file = path.join(BOT, rel);
   const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`[runtime-core] syntaxe invalide ${rel}: ${result.stderr || result.stdout}`);
-  }
+  if (result.status !== 0) throw new Error(`[runtime-core] syntaxe invalide ${rel}: ${result.stderr || result.stdout}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 1) MENU / ALLMENU — réponse bornée, cache image, fallback texte rapide
+// MENU / ALLMENU — jamais bloqué par une longue chaîne d'URLs d'images
 // ═══════════════════════════════════════════════════════════════════════════
 const menuRel = 'commands/general_tools/menu.js';
-
 const oldMenuFetch = `// Récupère une image personnalisée depuis une URL unique (menu personnalisé).
 async function getImageBufferFromUrl(url) {
   if (typeof url !== 'string' || !/^https?:\\/\\//i.test(url)) return null;
@@ -100,10 +74,7 @@ async function getImageBufferForStyle(styleNum) {
 }
 `;
 
-const newMenuFetch = `// [FIX MENU 2026-08] Les anciens téléchargements étaient séquentiels :
-// jusqu'à 10 s PAR URL. Avec 10+ URLs (et certains liens ibb.co non directs),
-// .menu pouvait rester bloqué plus d'une minute après la réaction du bot.
-// On borne maintenant le travail à 3 URLs en parallèle, ~3 s max, avec cache.
+const newMenuFetch = `// [FIX MENU 2026-08] Chargement borné : l'image ne peut plus bloquer le menu.
 const _menuImageCache = new Map();
 const MENU_IMAGE_TTL_MS = 15 * 60 * 1000;
 const MENU_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
@@ -121,10 +92,7 @@ function getCachedMenuImage(key) {
 function cacheMenuImage(key, buffer) {
   if (!buffer) return;
   _menuImageCache.set(key, { buffer, ts: Date.now() });
-  if (_menuImageCache.size > 30) {
-    const oldest = _menuImageCache.keys().next().value;
-    _menuImageCache.delete(oldest);
-  }
+  if (_menuImageCache.size > 30) _menuImageCache.delete(_menuImageCache.keys().next().value);
 }
 
 async function fetchMenuImage(url, timeoutMs = 3000) {
@@ -146,7 +114,6 @@ async function fetchMenuImage(url, timeoutMs = 3000) {
   }
 }
 
-// Récupère une image personnalisée depuis une URL unique (menu personnalisé).
 async function getImageBufferFromUrl(url) {
   const key = 'custom:' + String(url || '');
   const cached = getCachedMenuImage(key);
@@ -163,9 +130,9 @@ async function getImageBufferForStyle(styleNum) {
 
   const urls = (STYLE_IMAGE_URLS[styleNum] || STYLE_IMAGE_URLS[1])
     .filter(u => typeof u === 'string' && /^https?:\\/\\//i.test(u));
-  if (urls.length === 0) return null;
+  if (!urls.length) return null;
 
-  // Trois essais max, en parallèle : le menu texte reste toujours prioritaire.
+  // Au maximum trois requêtes en parallèle et 3 secondes d'attente totale.
   const candidates = [...urls].sort(() => Math.random() - 0.5).slice(0, 3);
   const results = await Promise.all(candidates.map(url => fetchMenuImage(url, 3000)));
   const image = results.find(Boolean) || null;
@@ -174,56 +141,43 @@ async function getImageBufferForStyle(styleNum) {
 }
 `;
 
-replaceOnce(
-  menuRel,
-  oldMenuFetch,
-  newMenuFetch,
-  '[FIX MENU 2026-08]',
-  'menu images rapides + cache'
-);
-
-// Garder allmenu bien sous la taille pratique d'un message WhatsApp et le
-// fractionner proprement si le nombre de commandes augmente.
-replaceOnce(
+patch(menuRel, oldMenuFetch, newMenuFetch, '[FIX MENU 2026-08]', 'menu images rapides + cache');
+patch(
   menuRel,
   'function buildAllMenuChunks(categoryNames, categories, prefix, count, maxChars = 52000) {',
   'function buildAllMenuChunks(categoryNames, categories, prefix, count, maxChars = 12000) {',
   'maxChars = 12000',
-  'allmenu chunks sûrs'
+  'allmenu fractionné'
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2) HANDLER — erreurs visibles + réduction drastique des appels groupMetadata
+// HANDLER — réduire les requêtes WhatsApp et rendre les erreurs visibles
 // ═══════════════════════════════════════════════════════════════════════════
 const handlerRel = 'handler.js';
-
-replaceOnce(
+patch(
   handlerRel,
   'const CACHE_TTL          = 300000; // [PERF] 5 min — reduit les requetes reseau vers WhatsApp',
   'const CACHE_TTL          = 60000; // [PERF/STABILITÉ] 60 s — 1 metadata réseau max/min/groupe',
   '1 metadata réseau max/min/groupe',
-  'TTL metadata groupe'
+  'cache metadata groupe'
 );
-
-replaceOnce(
+patch(
   handlerRel,
   'const getGroupMetadata = getLiveGroupMetadata;',
   'const getGroupMetadata = getCachedGroupMetadata;',
   'const getGroupMetadata = getCachedGroupMetadata;',
-  'metadata groupe via cache borné'
+  'metadata via cache borné'
 );
 
-const oldGetBotAdminClosure = `    const getBotAdmin = async () => {
+const oldGetBotAdmin = `    const getBotAdmin = async () => {
       if (!isGroup) return false;
       if (!_botIsAdminLoaded) { _botIsAdmin = await isBotAdmin(sock, from); _botIsAdminLoaded = true; }
       return _botIsAdmin;
     };`;
-
-const newGetBotAdminClosure = `    const getBotAdmin = async () => {
+const newGetBotAdmin = `    const getBotAdmin = async () => {
       if (!isGroup) return false;
       if (!_botIsAdminLoaded) {
-        // Réutiliser la metadata déjà chargée au lieu de refaire un second
-        // sock.groupMetadata() pour chaque message/commande du groupe.
+        // Réutiliser la metadata déjà chargée : pas de second groupMetadata().
         const meta = await getGroupMeta();
         const rawIds = [sock.user?.id, sock.user?.jid, sock.user?.lid].filter(Boolean);
         const botEntry = findParticipant(meta?.participants || [], rawIds);
@@ -233,19 +187,9 @@ const newGetBotAdminClosure = `    const getBotAdmin = async () => {
       }
       return _botIsAdmin;
     };`;
+patch(handlerRel, oldGetBotAdmin, newGetBotAdmin, 'Réutiliser la metadata déjà chargée', 'bot admin sans requête doublée');
 
-replaceOnce(
-  handlerRel,
-  oldGetBotAdminClosure,
-  newGetBotAdminClosure,
-  'Réutiliser la metadata déjà chargée',
-  'bot admin sans second appel metadata'
-);
-
-// Le catch construisait errMsgs mais utilisait ensuite errText sans le définir.
-// Cela masquait précisément les erreurs d'envoi/commande : réaction visible,
-// aucune réponse explicative.
-replaceOnce(
+patch(
   handlerRel,
   `    ];
     const destJid   = msg?.key?.remoteJid;`,
@@ -253,14 +197,14 @@ replaceOnce(
     const errText = errMsgs[Math.floor(Math.random() * errMsgs.length)];
     const destJid   = msg?.key?.remoteJid;`,
   'const errText = errMsgs[Math.floor',
-  'message erreur handler défini'
+  'erreur commande affichable'
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3) TAGALL / HIDETAG — le bot n'a pas besoin d'être admin pour mentionner
+// TAGALL / HIDETAG — le BOT n'a pas besoin d'être admin pour mentionner
 // ═══════════════════════════════════════════════════════════════════════════
 for (const rel of ['commands/group_management/tagall.js', 'commands/group_management/hidetag.js']) {
-  replaceOnce(
+  patch(
     rel,
     '  botAdminNeeded: true,',
     '  botAdminNeeded: false, // Mentionner les membres ne nécessite pas les droits admin du bot',
@@ -270,48 +214,18 @@ for (const rel of ['commands/group_management/tagall.js', 'commands/group_manage
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4) SESSIONS — credentials persistants Mongo + reconnexion saine
+// SESSIONS — le persistence-patch exécuté juste avant gère déjà MongoDB.
+// Ici on ne touche qu'à la reconnexion et au cycle de vie des sockets.
 // ═══════════════════════════════════════════════════════════════════════════
 const sessionRel = 'utils/sessionManager.js';
-
-replaceOnce(
-  sessionRel,
-  "const { useFileAuthState, sessionDirExists } = require('./fileAuthState');",
-  "const { useMongoAuthState } = require('./mongoAuth');",
-  "const { useMongoAuthState } = require('./mongoAuth');",
-  'auth sessions persistante MongoDB'
-);
-
-replaceOnce(
-  sessionRel,
-  '  const { state, saveCreds } = await useFileAuthState(sessionId);',
-  '  const { state, saveCreds } = await useMongoAuthState(db, sessionId);',
-  'await useMongoAuthState(db, sessionId)',
-  'chargement credentials depuis MongoDB'
-);
-
-replaceOnce(
-  sessionRel,
-  `      if (!sessionDirExists(meta.sessionId)) {
-        console.error(\`[SessionManager] ⚠️  Session \${meta.sessionId} indexée dans MongoDB mais aucun dossier local de credentials trouvé — reconnexion impossible sans migration (voir scripts/migrate-sessions-to-hybrid.js).\`);
-        continue;
-      }
-
-`,
-  '',
-  null,
-  'suppression dépendance disque local au redémarrage'
-);
-
-replaceOnce(
+patch(
   sessionRel,
   '  let reconnectAttempts = 0;',
   '  let reconnectAttempts = Number.isFinite(opts.reconnectAttempts) ? opts.reconnectAttempts : 0;',
   'Number.isFinite(opts.reconnectAttempts)',
-  'backoff reconnect persistant'
+  'backoff reconnect conservé'
 );
-
-replaceOnce(
+patch(
   sessionRel,
   '      const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !_isShuttingDown;',
   `      const terminalDisconnect = [
@@ -321,41 +235,34 @@ replaceOnce(
       ].includes(statusCode);
       const shouldReconnect = !terminalDisconnect && !_isShuttingDown;`,
   'const terminalDisconnect = [',
-  'politique reconnexion terminale'
+  'déconnexions terminales'
 );
-
-replaceOnce(
+patch(
   sessionRel,
   "          if (!_isShuttingDown) startSession(db, phoneNumber, { owner: opts.owner, origin: opts.origin }).catch(() => {});",
   "          if (!_isShuttingDown) startSession(db, phoneNumber, { owner: opts.owner, origin: opts.origin, reconnectAttempts }).catch(err => console.error(`[SessionManager] ❌ reconnexion ${sessionId}:`, err.message));",
   'origin: opts.origin, reconnectAttempts',
-  'propagation compteur reconnexion'
+  'backoff propagé entre sockets'
 );
-
-replaceOnce(
+patch(
   sessionRel,
   `  try { clearInterval(session.timers.processedTimer); } catch {}
   session.messageStore?.clear?.();`,
   `  try { clearInterval(session.timers.processedTimer); } catch {}
-  // Fermer totalement un ancien socket avant d'en créer un nouveau. Sans ce
-  // nettoyage, deux sockets du même compte peuvent se remplacer mutuellement
-  // (DisconnectReason.connectionReplaced / 440) et créer une boucle.
+  // Éliminer les anciens listeners avant recréation d'un socket pour éviter
+  // les doubles handlers et les boucles connectionReplaced.
   try { session.sock?.ev?.removeAllListeners?.(); } catch {}
-  try { session.sock?.end?.(new Error('session cleanup')); } catch {}
   session.messageStore?.clear?.();`,
-  "session.sock?.end?.(new Error('session cleanup'))",
-  'fermeture sockets zombies'
+  'Éliminer les anciens listeners avant recréation',
+  'listeners socket nettoyés'
 );
 
-// Vérifications finales des fichiers touchés.
 for (const rel of [
   menuRel,
   handlerRel,
   'commands/group_management/tagall.js',
   'commands/group_management/hidetag.js',
   sessionRel,
-]) {
-  check(rel);
-}
+]) check(rel);
 
-console.log('[runtime-core] ✅ menu/allmenu, sessions, metadata, tagall/hidetag stabilisés');
+console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, tagall/hidetag stabilisés');
