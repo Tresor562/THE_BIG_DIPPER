@@ -45,5 +45,16 @@ patch(
   'cache SignalKeyStore'
 );
 
+// runtime-core-fix.js retire d'abord tous les listeners de l'ancien socket.
+// On ferme ensuite réellement son transport WebSocket : sinon un socket
+// "muet" peut rester connecté côté WhatsApp et remplacer le nouveau socket.
+patch(
+  'utils/sessionManager.js',
+  `  try { session.sock?.ev?.removeAllListeners?.(); } catch {}\n  session.messageStore?.clear?.();`,
+  `  try { session.sock?.ev?.removeAllListeners?.(); } catch {}\n  try { session.sock?.end?.(new Error('session replaced')); } catch {}\n  session.messageStore?.clear?.();`,
+  "session.sock?.end?.(new Error('session replaced'))",
+  'fermeture transport ancien socket'
+);
+
 check('utils/sessionManager.js');
-console.log('[auth-cache] ✅ cache SignalKeyStore appliqué sans toucher au stockage Mongo');
+console.log('[auth-cache] ✅ cache SignalKeyStore + fermeture des anciens sockets appliqués');
