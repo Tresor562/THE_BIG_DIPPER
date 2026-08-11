@@ -19,6 +19,7 @@
     "audit:commands:4x": "node scripts/audit-commands-4x.js",
     "audit:menu-images": "node scripts/audit-menu-images.js",
     "audit:visual-responses": "node scripts/audit-response-style.js",
+    "audit:silent-responses": "node scripts/audit-silent-responses.js",
     "migrate:hybrid": "node scripts/migrate-sessions-to-hybrid.js"
   },
   "keywords": [
