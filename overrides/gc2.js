@@ -228,7 +228,10 @@ async function buildLegacyMessage(sock, msg, extra) {
 
 module.exports = {
   name: 'gc2',
-  aliases: ['gcstatus', 'upswgc'],
+  // `gcstatus` appartient à la commande moderne groupstatus.js.
+  // Garder ici uniquement l'alias historique qui reste unique évite une
+  // collision de routing sans modifier la logique interne de gc2.
+  aliases: ['upswgc'],
   category: '⚙️ Gestion de groupe',
   description: _legacyRegistration?.meta?.desc || 'Send group status update',
   usage: '.gc2 <texte> | répondre à un média',
