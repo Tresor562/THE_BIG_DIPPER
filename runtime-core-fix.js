@@ -235,7 +235,7 @@ patch(
   sessionRel,
   "          if (!_isShuttingDown) startSession(db, phoneNumber, { owner: opts.owner, origin: opts.origin }).catch(() => {});",
   "          if (!_isShuttingDown) startSession(db, phoneNumber, { owner: opts.owner, origin: opts.origin, reconnectAttempts }).catch(err => console.error(`[SessionManager] ❌ reconnexion ${sessionId}:`, err.message));",
-  'origin: opts.origin, reconnectAttempts',
+  '            reconnectAttempts,\n          }).catch(err => {',
   'backoff propagé entre sockets'
 );
 patch(
