@@ -8,7 +8,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "prestart": "node scripts/install-response-style.js && node scripts/install-category-menu-route.js",
+    "prestart": "node scripts/install-session-lifecycle-cleanup.js && node scripts/install-response-style.js && node scripts/install-category-menu-route.js",
     "start": "node --expose-gc index.js",
     "dev": "nodemon index.js",
     "install:no-puppeteer": "PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install",
