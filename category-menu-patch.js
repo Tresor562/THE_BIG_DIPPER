@@ -121,13 +121,13 @@ console.log('[category-menu] utils/categoryMenu.js installé');
 let handler = fs.readFileSync(handlerPath, 'utf8');
 const marker = '[CATEGORY MENU PHRASE]';
 if (!handler.includes(marker)) {
-  const anchor = `    // ── COMMANDES CLASSIQUES ────────────────────────────────\n    if (!isCommand) return;`;
-  const replacement = `    // ── [CATEGORY MENU PHRASE] ───────────────────────────────\n    // Affichage uniquement : ne contourne aucune permission d'exécution.\n    // Accepte avec ou sans préfixe : \"Groupe Menu\", \"Download Menu\", etc.\n    if (body) {\n      try {\n        const { handleCategoryMenuPhrase } = require('./utils/categoryMenu');\n        if (await handleCategoryMenuPhrase(sock, msg, { from }, body, config.prefix)) return;\n      } catch (err) {\n        console.error('[category-menu]', err.message);\n      }\n    }\n\n    // ── COMMANDES CLASSIQUES ────────────────────────────────\n    if (!isCommand) return;`;
+  const anchor = `    // ── CUSTOM REPLY — réponses automatiques personnalisées ─────────────`;
+  const replacement = `    // ── [CATEGORY MENU PHRASE] ───────────────────────────────\n    // Cette navigation fait partie du menu natif et doit donc passer avant\n    // les custom replies portant éventuellement le même texte. Elle affiche\n    // uniquement une liste et n'exécute aucune commande.\n    if (body) {\n      try {\n        const { handleCategoryMenuPhrase } = require('./utils/categoryMenu');\n        if (await handleCategoryMenuPhrase(sock, msg, { from }, body, config.prefix)) return;\n      } catch (err) {\n        console.error('[category-menu]', err.message);\n      }\n    }\n\n    // ── CUSTOM REPLY — réponses automatiques personnalisées ─────────────`;
   const count = handler.split(anchor).length - 1;
   if (count !== 1) throw new Error(`[category-menu] anchor handler attendu 1 fois, trouvé ${count}`);
   handler = handler.replace(anchor, replacement);
   fs.writeFileSync(handlerPath, handler);
-  console.log('[category-menu] routeur handler appliqué');
+  console.log('[category-menu] routeur handler appliqué avant custom replies');
 } else {
   console.log('[category-menu] routeur handler déjà appliqué');
 }
