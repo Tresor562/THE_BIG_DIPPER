@@ -142,13 +142,8 @@ async function getImageBufferForStyle(styleNum) {
 `;
 
 patch(menuRel, oldMenuFetch, newMenuFetch, '[FIX MENU 2026-08]', 'menu images rapides + cache');
-patch(
-  menuRel,
-  'function buildAllMenuChunks(categoryNames, categories, prefix, count, maxChars = 52000) {',
-  'function buildAllMenuChunks(categoryNames, categories, prefix, count, maxChars = 12000) {',
-  'maxChars = 12000',
-  'allmenu fractionné'
-);
+// Le fractionnement allmenu est déjà remplacé par menu-visual-patch.js (3200
+// caractères environ). Ne pas le repatcher ici : un seul propriétaire du bloc.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HANDLER — réduire les requêtes WhatsApp et rendre les erreurs visibles
@@ -214,8 +209,7 @@ for (const rel of ['commands/group_management/tagall.js', 'commands/group_manage
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SESSIONS — le persistence-patch exécuté juste avant gère déjà MongoDB.
-// Ici on ne touche qu'à la reconnexion et au cycle de vie des sockets.
+// SESSIONS — persistence-patch.js gère déjà MongoDB. Ici : reconnexion/socket.
 // ═══════════════════════════════════════════════════════════════════════════
 const sessionRel = 'utils/sessionManager.js';
 patch(
