@@ -42,16 +42,11 @@ async function removeLegacyTtlIndex(collection) {
 
 async function hasMongoAuthState(db, sessionId) {
   const collection = getCollection(db, sessionId);
-  try {
-    const doc = await retryMongo(
-      () => collection.findOne({ _id: 'creds' }, { projection: { _id: 1, value: 1 } }),
-      `hasMongoAuthState(${sessionId})`
-    );
-    return !!doc?.value;
-  } catch (err) {
-    console.error(err.message);
-    return false;
-  }
+  const doc = await retryMongo(
+    () => collection.findOne({ _id: 'creds' }, { projection: { _id: 1, value: 1 } }),
+    `hasMongoAuthState(${sessionId})`
+  );
+  return !!doc?.value;
 }
 
 /**
