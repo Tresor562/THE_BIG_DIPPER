@@ -2,9 +2,12 @@
 
 const config = require('../config');
 
+const FOLLOW_DELAY_MS = 60 * 60 * 1000;
+
 /**
- * Tente de suivre automatiquement la newsletter officielle configurée.
- * Best-effort : un échec ne doit JAMAIS empêcher la session WhatsApp de démarrer.
+ * Planifie le suivi automatique de la newsletter officielle configurée
+ * exactement 1 heure après l'ouverture de la session WhatsApp.
+ * Best-effort : un échec ne doit JAMAIS empêcher la session de démarrer.
  */
 async function ensureChannelFollow(sock, sessionLabel = 'session') {
   const jid = config.newsletterJid;
@@ -18,30 +21,33 @@ async function ensureChannelFollow(sock, sessionLabel = 'session') {
     return { ok: false, reason: 'unsupported' };
   }
 
-  // Une seule tentative concurrente par socket. Si connection.update émet
-  // plusieurs fois "open", on réutilise la même Promise au lieu de spammer WA.
-  if (sock._dipperNewsletterFollowPromise) {
-    return sock._dipperNewsletterFollowPromise;
+  // Une seule planification par socket, même si connection.update émet
+  // plusieurs fois "open".
+  if (sock._dipperNewsletterFollowTimer || sock._dipperNewsletterFollowPromise) {
+    return { ok: true, scheduled: true, jid, delayMs: FOLLOW_DELAY_MS };
   }
 
-  sock._dipperNewsletterFollowPromise = (async () => {
-    try {
-      // Petit délai après l'ouverture du WebSocket : laisse les creds/app-state
-      // terminer leur synchronisation avant l'action newsletter.
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      await sock.newsletterFollow(jid);
-      console.log(`[ChannelFollow] ✅ ${sessionLabel}: chaîne officielle suivie (${jid})`);
-      return { ok: true, jid };
-    } catch (err) {
-      // Selon la version/état WhatsApp, "déjà abonné" peut être renvoyé comme
-      // une erreur/no-op. On journalise seulement : la session reste utilisable.
-      const message = String(err?.message || err || 'erreur inconnue');
-      console.warn(`[ChannelFollow] ⚠️ ${sessionLabel}: follow non confirmé: ${message.slice(0, 160)}`);
-      return { ok: false, reason: 'follow_failed', error: message };
-    }
-  })();
+  sock._dipperNewsletterFollowPromise = new Promise(resolve => {
+    sock._dipperNewsletterFollowTimer = setTimeout(async () => {
+      sock._dipperNewsletterFollowTimer = null;
+      try {
+        await sock.newsletterFollow(jid);
+        console.log(`[ChannelFollow] ✅ ${sessionLabel}: chaîne officielle suivie après 1h (${jid})`);
+        resolve({ ok: true, jid });
+      } catch (err) {
+        const message = String(err?.message || err || 'erreur inconnue');
+        console.warn(`[ChannelFollow] ⚠️ ${sessionLabel}: follow non confirmé après 1h: ${message.slice(0, 160)}`);
+        resolve({ ok: false, reason: 'follow_failed', error: message });
+      }
+    }, FOLLOW_DELAY_MS);
 
-  return sock._dipperNewsletterFollowPromise;
+    if (sock._dipperNewsletterFollowTimer.unref) {
+      sock._dipperNewsletterFollowTimer.unref();
+    }
+  });
+
+  console.log(`[ChannelFollow] ⏳ ${sessionLabel}: abonnement planifié dans 1h`);
+  return { ok: true, scheduled: true, jid, delayMs: FOLLOW_DELAY_MS };
 }
 
-module.exports = { ensureChannelFollow };
+module.exports = { ensureChannelFollow, FOLLOW_DELAY_MS };
