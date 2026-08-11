@@ -20,6 +20,25 @@ function patch(search, replacement, marker, label) {
   console.log(`[mono-session] ${label} appliqué`);
 }
 
+function ensureOpenLifecycle() {
+  let src = fs.readFileSync(indexPath, 'utf8');
+  const marker = '// [MONO SESSION OPEN GUARD]';
+  if (src.includes(marker)) {
+    console.log('[mono-session] reconnexion annulée à ouverture déjà appliqué');
+    return;
+  }
+
+  const anchor = "    } else if (connection === 'open') {";
+  const count = src.split(anchor).length - 1;
+  if (count !== 1) {
+    throw new Error(`[mono-session] reconnexion annulée à ouverture: ancre connection=open attendue 1 fois, trouvée ${count}`);
+  }
+
+  const replacement = `${anchor}\n      ${marker}\n      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }\n      activeSock = sock;`;
+  fs.writeFileSync(indexPath, src.replace(anchor, replacement));
+  console.log('[mono-session] reconnexion annulée à ouverture appliqué');
+}
+
 patch(
   `let pingTimer      = null;\nlet heartbeatTimer = null;\nlet monitorTimer   = null;`,
   `let pingTimer      = null;\nlet heartbeatTimer = null;\nlet monitorTimer   = null;\nlet reconnectTimer = null;\nlet activeSock     = null;`,
@@ -48,12 +67,9 @@ patch(
   'reconnexion mono-session possédée'
 );
 
-patch(
-  `    } else if (connection === 'open') {\n      botReadyTime      = Date.now();\n      reconnectAttempts = 0;`,
-  `    } else if (connection === 'open') {\n      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }\n      activeSock        = sock;\n      botReadyTime      = Date.now();\n      reconnectAttempts = 0;`,
-  'activeSock        = sock;',
-  'reconnexion annulée à ouverture'
-);
+// Ne dépend plus des lignes botReadyTime/reconnectAttempts ni de leur
+// espacement : on ancre uniquement sur le début stable de connection=open.
+ensureOpenLifecycle();
 
 patch(
   `      } else {\n        // loggedOut = ban WhatsApp ou déconnexion manuelle\n        // Ne PAS reconnecter — l'utilisateur doit réappairer\n        originalConsoleLog('❌ Session loggedOut. Réappairer le bot requis.');\n        reconnectAttempts = 0;\n      }`,
@@ -64,5 +80,19 @@ patch(
 
 const check = spawnSync(process.execPath, ['--check', indexPath], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error(`[mono-session] syntaxe invalide index.js: ${check.stderr || check.stdout}`);
+
+const finalIndex = fs.readFileSync(indexPath, 'utf8');
+for (const required of [
+  'let reconnectTimer = null;',
+  'let activeSock     = null;',
+  'const terminalDisconnect = [',
+  "[Mono-Session] reconnexion impossible:",
+  '// [MONO SESSION OPEN GUARD]',
+  'Session terminale (code=',
+]) {
+  if (!finalIndex.includes(required)) {
+    throw new Error(`[mono-session] garde-fou final absent: ${required}`);
+  }
+}
 
 console.log('[mono-session] ✅ lifecycle owner mono-session stabilisé');
