@@ -50,4 +50,4 @@ async function ensureChannelFollow(sock, sessionLabel = 'session') {
   return { ok: true, scheduled: true, jid, delayMs: FOLLOW_DELAY_MS };
 }
 
-module.exports = { ensureChannelFollow, FOLLOW_DELAY_MS };
+module.exports = { ensureChannelFollow };
