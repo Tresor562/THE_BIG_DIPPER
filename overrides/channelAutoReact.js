@@ -3,7 +3,6 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
-const { FOLLOW_DELAY_MS } = require('./channelAutoFollow');
 
 const MAX_SEEN = 500;
 const STORE_FILE = path.join(process.cwd(), 'database', 'main_channel_reactions.json');
@@ -63,15 +62,42 @@ function chooseReactionEmoji(text, rawMessage) {
   const m = unwrapMessage(rawMessage);
 
   const rules = [
-    { emoji: '🛡️', test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/ },
-    { emoji: '🤖', test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/ },
-    { emoji: '💻', test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/ },
-    { emoji: '💡', test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/ },
-    { emoji: '🚀', test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/ },
-    { emoji: '🎉', test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/ },
-    { emoji: '❤️', test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/ },
-    { emoji: '👏', test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/ },
-    { emoji: '🔥', test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/ },
+    {
+      emoji: '🛡️',
+      test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/,
+    },
+    {
+      emoji: '🤖',
+      test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/,
+    },
+    {
+      emoji: '💻',
+      test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/,
+    },
+    {
+      emoji: '💡',
+      test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/,
+    },
+    {
+      emoji: '🚀',
+      test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/,
+    },
+    {
+      emoji: '🎉',
+      test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/,
+    },
+    {
+      emoji: '❤️',
+      test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/,
+    },
+    {
+      emoji: '👏',
+      test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/,
+    },
+    {
+      emoji: '🔥',
+      test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/,
+    },
   ];
 
   for (const rule of rules) {
@@ -176,13 +202,11 @@ async function installMainChannelAutoReact(sock) {
   const statePromise = loadState();
   sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue || Promise.resolve();
 
-  const liveTimer = setTimeout(
-    () => subscribeToLiveUpdates(sock, jid).catch(() => {}),
-    FOLLOW_DELAY_MS + 2000
-  );
-  if (liveTimer.unref) liveTimer.unref();
+  // Le mécanisme de live updates reste inchangé.
+  setTimeout(() => subscribeToLiveUpdates(sock, jid).catch(() => {}), 2000);
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
+    // Réagir uniquement aux NOUVELLES publications, jamais à l'historique synchronisé.
     if (type !== 'notify') return;
 
     for (const msg of messages || []) {
@@ -216,6 +240,9 @@ async function installMainChannelAutoReact(sock) {
 
           const text = extractPublicationText(msg);
           const emoji = chooseReactionEmoji(text, msg.message);
+
+          // Petit délai naturel et surtout temps laissé à WhatsApp pour finaliser
+          // l'enregistrement serveur de la publication avant la réaction.
           await wait(2200);
           await sock.newsletterReactMessage(jid, serverId, emoji);
           console.log(`[ChannelReact] ✅ Publication ${serverId} → ${emoji}`);
