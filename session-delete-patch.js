@@ -10,16 +10,12 @@ const sessionPath = path.join(BOT, 'utils', 'sessionManager.js');
 const serverPath = path.join(BOT, 'api', 'server.js');
 
 for (const file of [sessionPath, serverPath]) {
-  if (!fs.existsSync(file)) {
-    throw new Error(`[session-delete] fichier absent: ${file}`);
-  }
+  if (!fs.existsSync(file)) throw new Error(`[session-delete] fichier absent: ${file}`);
 }
 
 function replaceOnce(source, search, replacement, label) {
   const count = source.split(search).length - 1;
-  if (count !== 1) {
-    throw new Error(`[session-delete] ${label}: attendu 1 occurrence, trouvé ${count}`);
-  }
+  if (count !== 1) throw new Error(`[session-delete] ${label}: attendu 1 occurrence, trouvé ${count}`);
   return source.replace(search, replacement);
 }
 
@@ -30,31 +26,25 @@ function nodeCheck(file) {
   }
 }
 
-// Le script privé install-session-lifecycle-cleanup.js est exécuté avant ce
-// patch. Il possède déjà l'unique moteur de suppression définitive :
-//   - loggedOut / appareil retiré => purge persistante automatique ;
-//   - pairing orphelin => purge persistante ;
-//   - réseau / connectionReplaced => conservation des credentials.
-// On refuse donc de dupliquer cette logique ici.
+// Le lifecycle privé doit déjà avoir installé la politique immortelle :
+// - aucune suppression automatique d'une session enregistrée ;
+// - connectionReplaced/badSession reconnectés ;
+// - deleteSessionData reste l'unique moteur de suppression explicite.
 const sessionSrc = fs.readFileSync(sessionPath, 'utf8');
-const lifecycleGuards = [
+for (const marker of [
   '[SESSION LIFECYCLE CLEANUP]',
-  '[SESSION TERMINAL PURGE]',
+  '[SESSION IMMORTAL RECONNECT]',
+  '[SESSION IMMORTAL POLICY]',
   'async function deleteSessionData(',
-  'statusCode === DisconnectReason.loggedOut',
   '  deleteSessionData,',
-];
-for (const marker of lifecycleGuards) {
-  if (!sessionSrc.includes(marker)) {
-    throw new Error(`[session-delete] lifecycle préalable absent: ${marker}`);
-  }
+]) {
+  if (!sessionSrc.includes(marker)) throw new Error(`[session-delete] lifecycle préalable absent: ${marker}`);
 }
 
-// Sécurité : la purge terminale automatique doit rester limitée à loggedOut.
-const terminalStart = sessionSrc.indexOf('// [SESSION TERMINAL PURGE]');
-const terminalBlock = terminalStart >= 0 ? sessionSrc.slice(terminalStart, terminalStart + 750) : '';
-if (/statusCode\s*===\s*DisconnectReason\.(connectionReplaced|badSession)/.test(terminalBlock)) {
-  throw new Error('[session-delete] sécurité: connectionReplaced/badSession ne doivent pas déclencher de purge automatique');
+const immortalStart = sessionSrc.indexOf('// [SESSION IMMORTAL POLICY]');
+const immortalBlock = immortalStart >= 0 ? sessionSrc.slice(immortalStart, immortalStart + 950) : '';
+if (/purgeSessionPersistence\s*\(|deleteSessionData\s*\(/.test(immortalBlock)) {
+  throw new Error('[session-delete] sécurité: loggedOut ne doit jamais supprimer automatiquement les données');
 }
 
 let serverSrc = fs.readFileSync(serverPath, 'utf8');
@@ -64,7 +54,7 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
     '/**',
     ' * POST /session/delete',
     ' * Body : { phoneNumber }',
-    ' * Suppression définitive même si la session est déjà déconnectée.',
+    ' * Suppression définitive EXPLICITE, même si la session est déconnectée.',
     ' */',
     'async function handleSessionDeleteRoute(req, res) {',
     '  if (!isAuthorizedInternalCall(req)) {',
@@ -72,11 +62,8 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
     '  }',
     '',
     '  let body;',
-    '  try {',
-    '    body = await readJsonBody(req);',
-    '  } catch (err) {',
-    "    return sendJSON(res, err.statusCode || 400, { error: 'BAD_REQUEST', message: err.message });",
-    '  }',
+    '  try { body = await readJsonBody(req); }',
+    "  catch (err) { return sendJSON(res, err.statusCode || 400, { error: 'BAD_REQUEST', message: err.message }); }",
     '',
     '  const phoneNumber = body?.phoneNumber;',
     '  if (!phoneNumber) {',
@@ -84,15 +71,11 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
     '  }',
     '',
     '  try {',
-    "    const deleted = await sessionManager.deleteSessionData(phoneNumber, null, 'suppression demandée via API');",
+    "    const deleted = await sessionManager.deleteSessionData(phoneNumber, null, 'suppression demandée explicitement via API');",
     '    if (!deleted) {',
     "      return sendJSON(res, 500, { error: 'DELETE_INCOMPLETE', message: 'La suppression persistante de la session est incomplète.' });",
     '    }',
-    '    return sendJSON(res, 200, {',
-    '      success: true,',
-    '      deleted: true,',
-    '      sessionId: sessionManager.toSessionId(phoneNumber),',
-    '    });',
+    '    return sendJSON(res, 200, { success: true, deleted: true, sessionId: sessionManager.toSessionId(phoneNumber) });',
     '  } catch (err) {',
     "    console.error('[api] /session/delete erreur:', err);",
     "    return sendJSON(res, 500, { error: 'DELETE_FAILED', message: 'Impossible de supprimer définitivement cette session.' });",
@@ -102,19 +85,13 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
     '',
   ].join('\n');
 
-  serverSrc = replaceOnce(
-    serverSrc,
-    'function createServer() {',
-    handlerBlock + 'function createServer() {',
-    'handler POST /session/delete'
-  );
+  serverSrc = replaceOnce(serverSrc, 'function createServer() {', handlerBlock + 'function createServer() {', 'handler POST /session/delete');
 
   const stopRoute = [
     "      if (req.method === 'POST' && url.pathname === '/session/stop') {",
     '        return await handleSessionStopRoute(req, res);',
     '      }',
   ].join('\n');
-
   const deleteRoute = [
     stopRoute,
     "      if (req.method === 'POST' && url.pathname === '/session/delete') {",
@@ -124,7 +101,7 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
 
   serverSrc = replaceOnce(serverSrc, stopRoute, deleteRoute, 'route POST /session/delete');
   fs.writeFileSync(serverPath, serverSrc);
-  console.log('[session-delete] route POST /session/delete installée via deleteSessionData');
+  console.log('[session-delete] route POST /session/delete installée — suppression explicite uniquement');
 } else {
   console.log('[session-delete] route POST /session/delete déjà installée');
 }
@@ -136,11 +113,9 @@ const finalServer = fs.readFileSync(serverPath, 'utf8');
 for (const marker of [
   "url.pathname === '/session/delete'",
   'sessionManager.deleteSessionData(phoneNumber',
-  "'suppression demandée via API'",
+  "'suppression demandée explicitement via API'",
 ]) {
-  if (!finalServer.includes(marker)) {
-    throw new Error(`[session-delete] garde-fou API absent: ${marker}`);
-  }
+  if (!finalServer.includes(marker)) throw new Error(`[session-delete] garde-fou API absent: ${marker}`);
 }
 
-console.log('[session-delete] ✅ /session/delete réutilise le lifecycle; loggedOut reste purgé définitivement');
+console.log('[session-delete] ✅ sessions conservées automatiquement; /session/delete reste la suppression manuelle définitive');
