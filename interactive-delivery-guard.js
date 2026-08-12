@@ -9,6 +9,7 @@ const BOT = path.join(ROOT, 'bot');
 const menuPath = path.join(BOT, 'commands', 'general_tools', 'menu.js');
 const reperePath = path.join(BOT, 'commands', 'bot_sovereignty', 'repere.js');
 const MARKER = '[INTERACTIVE DELIVERY TIMEOUT]';
+const ALLMENU_MARKER = '[ALLMENU STANDARD DELIVERY]';
 
 for (const file of [menuPath, reperePath]) {
   if (!fs.existsSync(file)) throw new Error(`[delivery-guard] fichier absent: ${file}`);
@@ -18,6 +19,51 @@ function replaceOnce(source, search, replacement, label) {
   const count = source.split(search).length - 1;
   if (count !== 1) throw new Error(`[delivery-guard] ${label}: attendu 1 occurrence, trouvé ${count}`);
   return source.replace(search, replacement);
+}
+
+function replaceAllMenuBlock(source) {
+  if (source.includes(ALLMENU_MARKER)) {
+    console.log('[delivery-guard] allmenu standard déjà installé');
+    return source;
+  }
+
+  const token = "if (body === 'allmenu') {";
+  const startToken = source.indexOf(token);
+  if (startToken === -1) throw new Error('[delivery-guard] branche allmenu introuvable');
+
+  const start = source.lastIndexOf('\n', startToken) + 1;
+  const styleToken = 'const styleMatch = body.match(/^style(\\d+)$/);';
+  const stylePos = source.indexOf(styleToken, startToken);
+  if (stylePos === -1) throw new Error('[delivery-guard] fin de branche allmenu introuvable');
+  const end = source.lastIndexOf('\n', stylePos) + 1;
+
+  const indent = source.slice(start, startToken);
+  const replacement = [
+    `${indent}// ${ALLMENU_MARKER}`,
+    `${indent}if (body === 'allmenu') {`,
+    `${indent}  const ctx = buildMenuContext(rawSender, isSupreme, sock);`,
+    `${indent}  const chunks = buildAllMenuChunks(`,
+    `${indent}    ctx.styleActif,`,
+    `${indent}    ctx.categoryNames,`,
+    `${indent}    ctx.categories,`,
+    `${indent}    prefix,`,
+    `${indent}    ctx.count,`,
+    `${indent}    { ...ctx, senderJid: rawSender }`,
+    `${indent}  );`,
+    `${indent}  for (let i = 0; i < chunks.length; i++) {`,
+    `${indent}    await sock.sendMessage(`,
+    `${indent}      extra.from,`,
+    `${indent}      { text: chunks[i], mentions: [rawSender] },`,
+    `${indent}      (i === 0 && extra.from.endsWith('@g.us')) ? { quoted: msg } : undefined`,
+    `${indent}    );`,
+    `${indent}  }`,
+    `${indent}  return;`,
+    `${indent}}`,
+    '',
+  ].join('\n');
+
+  console.log('[delivery-guard] allmenu remplacé structurellement par sendMessage standard');
+  return source.slice(0, start) + replacement + source.slice(end);
 }
 
 const helper = `// ${MARKER}\nasync function withInteractiveTimeout(promise, ms, label) {\n  let timer;\n  try {\n    return await Promise.race([\n      Promise.resolve(promise),\n      new Promise((_, reject) => {\n        timer = setTimeout(() => reject(new Error(label + ' timeout après ' + ms + 'ms')), ms);\n        if (timer.unref) timer.unref();\n      }),\n    ]);\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\n`;
@@ -48,19 +94,16 @@ if (!menu.includes(MARKER)) {
     "    await withInteractiveTimeout(\n      sock.relayMessage(jid, generated.message, { messageId: generated.key.id }),\n      5000,\n      'menu interactive relay'\n    );",
     'timeout relay menu'
   );
-
-  // ALLMENU est potentiellement volumineux et segmenté. Il doit utiliser la
-  // primitive la plus fiable et ne jamais attendre un CTA interactif pour
-  // chaque segment. Le menu principal conserve l'interactif + fallback.
-  const allMenuOld = `    for (let i = 0; i < chunks.length; i++) {\n      await sendStyledMenuMessage(sock, extra.from, {\n        text: chunks[i],\n        style: ctx.styleActif,\n        imageUrl: ctx.imageUrl || null,\n        quoted: i === 0 ? msg : null,\n        mentions: [rawSender],\n        withImage: i === 0,\n      });\n    }`;
-  const allMenuNew = `    for (let i = 0; i < chunks.length; i++) {\n      await sock.sendMessage(\n        extra.from,\n        { text: chunks[i], mentions: [rawSender] },\n        (i === 0 && extra.from.endsWith('@g.us')) ? { quoted: msg } : undefined\n      );\n    }`;
-  menu = replaceOnce(menu, allMenuOld, allMenuNew, 'allmenu envoi standard fiable');
-
-  fs.writeFileSync(menuPath, menu);
-  console.log('[delivery-guard] ✅ menu/allmenu protégés contre les blocages interactifs');
 } else {
-  console.log('[delivery-guard] menu déjà protégé');
+  console.log('[delivery-guard] menu interactif déjà protégé');
 }
+
+// ALLMENU est volontairement standard : on remplace le bloc par sa logique,
+// pas par sa mise en forme. prepare.js et menu-visual-patch.js peuvent changer
+// les espaces ou le contenu interne sans casser ce garde-fou.
+menu = replaceAllMenuBlock(menu);
+fs.writeFileSync(menuPath, menu);
+console.log('[delivery-guard] ✅ menu/allmenu protégés contre les blocages interactifs');
 
 // ─────────────────────────────────────────────────────────────
 // REPERE / REPÈRE
@@ -110,12 +153,22 @@ const finalRepere = fs.readFileSync(reperePath, 'utf8');
 
 for (const marker of [
   MARKER,
+  ALLMENU_MARKER,
   "3500, 'menu image'",
   "4500,\n        'menu media upload'",
   "'menu interactive relay'",
-  'await sock.sendMessage(\n        extra.from,\n        { text: chunks[i]',
 ]) {
   if (!finalMenu.includes(marker)) throw new Error(`[delivery-guard] garde-fou menu absent: ${marker}`);
+}
+
+const allmenuStart = finalMenu.indexOf(`// ${ALLMENU_MARKER}`);
+const allmenuEnd = allmenuStart === -1 ? -1 : finalMenu.indexOf('const styleMatch = body.match(/^style(\\d+)$/);', allmenuStart);
+const allmenuBlock = allmenuStart >= 0 && allmenuEnd > allmenuStart ? finalMenu.slice(allmenuStart, allmenuEnd) : '';
+if (!allmenuBlock.includes('await sock.sendMessage(')) {
+  throw new Error('[delivery-guard] allmenu ne possède pas son envoi standard');
+}
+if (allmenuBlock.includes('sendStyledMenuMessage(') || allmenuBlock.includes('relayMessage(')) {
+  throw new Error('[delivery-guard] allmenu dépend encore de la livraison interactive');
 }
 
 for (const marker of [
@@ -129,4 +182,4 @@ for (const marker of [
   if (!finalRepere.includes(marker)) throw new Error(`[delivery-guard] garde-fou repere absent: ${marker}`);
 }
 
-console.log('[delivery-guard] ✅ livraison bornée: image ≤3.5s, média ≤4.5s, interactif ≤5s, fallback obligatoire');
+console.log('[delivery-guard] ✅ livraison bornée: menu/repere interactifs avec fallback; allmenu standard idempotent');
