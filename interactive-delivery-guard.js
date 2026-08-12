@@ -32,8 +32,7 @@ function replaceAllMenuBlock(source) {
   if (startToken === -1) throw new Error('[delivery-guard] branche allmenu introuvable');
 
   const start = source.lastIndexOf('\n', startToken) + 1;
-  const styleToken = 'const styleMatch = body.match(/^style(\\d+)$/);';
-  const stylePos = source.indexOf(styleToken, startToken);
+  const stylePos = source.indexOf('const styleMatch = body.match(', startToken);
   if (stylePos === -1) throw new Error('[delivery-guard] fin de branche allmenu introuvable');
   const end = source.lastIndexOf('\n', stylePos) + 1;
 
@@ -162,7 +161,7 @@ for (const marker of [
 }
 
 const allmenuStart = finalMenu.indexOf(`// ${ALLMENU_MARKER}`);
-const allmenuEnd = allmenuStart === -1 ? -1 : finalMenu.indexOf('const styleMatch = body.match(/^style(\\d+)$/);', allmenuStart);
+const allmenuEnd = allmenuStart === -1 ? -1 : finalMenu.indexOf('const styleMatch = body.match(', allmenuStart);
 const allmenuBlock = allmenuStart >= 0 && allmenuEnd > allmenuStart ? finalMenu.slice(allmenuStart, allmenuEnd) : '';
 if (!allmenuBlock.includes('await sock.sendMessage(')) {
   throw new Error('[delivery-guard] allmenu ne possède pas son envoi standard');
