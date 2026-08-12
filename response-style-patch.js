@@ -34,11 +34,13 @@ const required = [
   '[RESPONSE STYLE DISCIPLINE]',
   '[PRIVATE SEND SAFETY]',
   '[QUOTED SEND RETRY]',
+  '[RELAY RESPONSE WATCH]',
   '[COMMAND RESPONSE WATCHDOG]',
   '[COMMAND ERROR RESPONSE]',
   '[COMMAND RESPONSE CONTEXT]',
   'commandResponseStorage.run(',
   'responseTrace.responses += 1',
+  'relayTrace.responses += 1',
 ];
 for (const marker of required) {
   if (!finalHandler.includes(marker)) {
@@ -46,4 +48,4 @@ for (const marker of required) {
   }
 }
 
-console.log('[response-style-deploy] ✅ discipline visuelle + anti-silence appliqués au bot déployé');
+console.log('[response-style-deploy] ✅ sendMessage + relayMessage suivis; anti-silence appliqué au bot déployé');
