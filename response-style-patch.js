@@ -10,6 +10,11 @@ const installer = path.join(BOT, 'scripts', 'install-response-style.js');
 const handler = path.join(BOT, 'handler.js');
 const style = path.join(BOT, 'utils', 'responseStyle.js');
 
+// Le lifecycle cleanup du sous-module est exécuté juste avant ce patch dans
+// postinstall. On applique ensuite la vraie suppression persistante afin que
+// /delsession fonctionne aussi sur les sessions déjà déconnectées.
+require('./session-delete-patch');
+
 for (const file of [installer, handler, style]) {
   if (!fs.existsSync(file)) throw new Error(`[response-style-deploy] fichier absent: ${file}`);
 }
