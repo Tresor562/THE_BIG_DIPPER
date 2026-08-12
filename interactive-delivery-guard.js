@@ -9,7 +9,7 @@ const BOT = path.join(ROOT, 'bot');
 const menuPath = path.join(BOT, 'commands', 'general_tools', 'menu.js');
 const reperePath = path.join(BOT, 'commands', 'bot_sovereignty', 'repere.js');
 const MARKER = '[INTERACTIVE DELIVERY TIMEOUT]';
-const ALLMENU_MARKER = '[ALLMENU STANDARD DELIVERY]';
+const ALLMENU_MARKER = '[ALLMENU HYBRID DELIVERY]';
 
 for (const file of [menuPath, reperePath]) {
   if (!fs.existsSync(file)) throw new Error(`[delivery-guard] fichier absent: ${file}`);
@@ -21,9 +21,88 @@ function replaceOnce(source, search, replacement, label) {
   return source.replace(search, replacement);
 }
 
+function patchMenuPrivateSafety(source) {
+  const start = source.indexOf('async function sendStyledMenuMessage(');
+  const end = start < 0 ? -1 : source.indexOf('// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES', start);
+  if (start < 0 || end < 0) throw new Error('[delivery-guard] sendStyledMenuMessage introuvable');
+
+  let sender = source.slice(start, end);
+  if (!sender.includes('[PRIVATE SAFE QUOTED]')) {
+    const channelLine = "  const channelUrl = config.social?.whatsappChannel || 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';";
+    const insert = `${channelLine}\n  // [PRIVATE SAFE QUOTED] Les quotes sont conservées en groupe seulement.\n  const safeQuotedMessage = quoted && jid.endsWith('@g.us') ? quoted : undefined;\n  const safeQuotedOptions = safeQuotedMessage ? { quoted: safeQuotedMessage } : undefined;`;
+    if (!sender.includes(channelLine)) throw new Error('[delivery-guard] channelUrl menu introuvable');
+    sender = sender.replace(channelLine, insert);
+    sender = sender.replace('{ quoted: quoted || undefined, userJid: sock.user?.id }', '{ quoted: safeQuotedMessage, userJid: sock.user?.id }');
+  }
+
+  const oldFallback = `  } catch (err) {
+    console.warn('[Menu] interactive CTA indisponible, fallback standard:', err.message);
+    const fallbackText = \`${'${text}'}\\n\\n📢 *Chaîne officielle :* ${'${channelUrl}'}\`;
+    if (imageBuffer && fallbackText.length <= 1000) {
+      return sock.sendMessage(
+        jid,
+        { image: imageBuffer, caption: fallbackText, contextInfo },
+        quoted ? { quoted } : undefined
+      );
+    }
+    if (imageBuffer) {
+      await sock.sendMessage(
+        jid,
+        { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo },
+        quoted ? { quoted } : undefined
+      );
+    }
+    return sock.sendMessage(
+      jid,
+      { text: fallbackText, contextInfo },
+      quoted ? { quoted } : undefined
+    );
+  }
+}`;
+
+  const newFallback = `  } catch (err) {
+    console.warn('[Menu] interactif indisponible → fallback newsletter:', err.message);
+    const fallbackText = \`${'${text}'}\\n\\n📢 *Chaîne officielle :* ${'${channelUrl}'}\`;
+
+    // Niveau 2 : envoi standard avec image + effet newsletter. Aucun relayMessage.
+    try {
+      if (imageBuffer && fallbackText.length <= 1000) {
+        return await sock.sendMessage(
+          jid,
+          { image: imageBuffer, caption: fallbackText, contextInfo },
+          safeQuotedOptions
+        );
+      }
+      if (imageBuffer) {
+        await sock.sendMessage(
+          jid,
+          { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo },
+          safeQuotedOptions
+        );
+      }
+      return await sock.sendMessage(jid, { text: fallbackText, contextInfo }, safeQuotedOptions);
+    } catch (newsletterErr) {
+      // Niveau 3 : filet de sécurité absolu, sans metadata newsletter ni quote privé.
+      console.warn('[Menu] fallback newsletter indisponible → envoi brut:', newsletterErr.message);
+      if (imageBuffer && fallbackText.length <= 1000) {
+        return sock.sendMessage(jid, { image: imageBuffer, caption: fallbackText }, safeQuotedOptions);
+      }
+      return sock.sendMessage(jid, { text: fallbackText }, safeQuotedOptions);
+    }
+  }
+}`;
+
+  if (sender.includes("console.warn('[Menu] interactive CTA indisponible, fallback standard:'")) {
+    if (!sender.includes(oldFallback)) throw new Error('[delivery-guard] ancien fallback menu non reconnu');
+    sender = sender.replace(oldFallback, newFallback);
+  }
+
+  return source.slice(0, start) + sender + source.slice(end);
+}
+
 function replaceAllMenuBlock(source) {
   if (source.includes(ALLMENU_MARKER)) {
-    console.log('[delivery-guard] allmenu standard déjà installé');
+    console.log('[delivery-guard] allmenu hybride déjà installé');
     return source;
   }
 
@@ -35,42 +114,43 @@ function replaceAllMenuBlock(source) {
   const stylePos = source.indexOf('const styleMatch = body.match(', startToken);
   if (stylePos === -1) throw new Error('[delivery-guard] fin de branche allmenu introuvable');
   const end = source.lastIndexOf('\n', stylePos) + 1;
-
   const indent = source.slice(start, startToken);
+
   const replacement = [
     `${indent}// ${ALLMENU_MARKER}`,
     `${indent}if (body === 'allmenu') {`,
     `${indent}  const ctx = buildMenuContext(rawSender, isSupreme, sock);`,
     `${indent}  const chunks = buildAllMenuChunks(`,
-    `${indent}    ctx.styleActif,`,
-    `${indent}    ctx.categoryNames,`,
-    `${indent}    ctx.categories,`,
-    `${indent}    prefix,`,
-    `${indent}    ctx.count,`,
+    `${indent}    ctx.styleActif, ctx.categoryNames, ctx.categories, prefix, ctx.count,`,
     `${indent}    { ...ctx, senderJid: rawSender }`,
     `${indent}  );`,
     `${indent}  for (let i = 0; i < chunks.length; i++) {`,
-    `${indent}    await sock.sendMessage(`,
-    `${indent}      extra.from,`,
-    `${indent}      { text: chunks[i], mentions: [rawSender] },`,
-    `${indent}      (i === 0 && extra.from.endsWith('@g.us')) ? { quoted: msg } : undefined`,
-    `${indent}    );`,
+    `${indent}    if (i === 0) {`,
+    `${indent}      // Première partie : image du style + newsletter + CTA, avec fallback interne.`,
+    `${indent}      await sendStyledMenuMessage(sock, extra.from, {`,
+    `${indent}        text: chunks[i], style: ctx.styleActif, imageUrl: ctx.imageUrl || null,`,
+    `${indent}        quoted: extra.from.endsWith('@g.us') ? msg : null,`,
+    `${indent}        mentions: [rawSender], withImage: true,`,
+    `${indent}      });`,
+    `${indent}    } else {`,
+    `${indent}      // Suites : texte standard pour ne jamais bloquer l'intégralité du allmenu.`,
+    `${indent}      await sock.sendMessage(extra.from, { text: chunks[i], mentions: [rawSender] });`,
+    `${indent}    }`,
     `${indent}  }`,
     `${indent}  return;`,
     `${indent}}`,
     '',
   ].join('\n');
 
-  console.log('[delivery-guard] allmenu remplacé structurellement par sendMessage standard');
+  console.log('[delivery-guard] allmenu hybride installé: première partie enrichie, suites standard');
   return source.slice(0, start) + replacement + source.slice(end);
 }
 
 const helper = `// ${MARKER}\nasync function withInteractiveTimeout(promise, ms, label) {\n  let timer;\n  try {\n    return await Promise.race([\n      Promise.resolve(promise),\n      new Promise((_, reject) => {\n        timer = setTimeout(() => reject(new Error(label + ' timeout après ' + ms + 'ms')), ms);\n        if (timer.unref) timer.unref();\n      }),\n    ]);\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\n`;
 
-// ─────────────────────────────────────────────────────────────
 // MENU / ALLMENU
-// ─────────────────────────────────────────────────────────────
 let menu = fs.readFileSync(menuPath, 'utf8');
+menu = patchMenuPrivateSafety(menu);
 if (!menu.includes(MARKER)) {
   menu = replaceOnce(
     menu,
@@ -96,25 +176,14 @@ if (!menu.includes(MARKER)) {
 } else {
   console.log('[delivery-guard] menu interactif déjà protégé');
 }
-
-// ALLMENU est volontairement standard : on remplace le bloc par sa logique,
-// pas par sa mise en forme. prepare.js et menu-visual-patch.js peuvent changer
-// les espaces ou le contenu interne sans casser ce garde-fou.
 menu = replaceAllMenuBlock(menu);
 fs.writeFileSync(menuPath, menu);
-console.log('[delivery-guard] ✅ menu/allmenu protégés contre les blocages interactifs');
+console.log('[delivery-guard] ✅ menu fiable + allmenu hybride');
 
-// ─────────────────────────────────────────────────────────────
-// REPERE / REPÈRE
-// ─────────────────────────────────────────────────────────────
+// REPERE / REPÈRE — bornage de l'interactif; le triple fallback est fourni par l'override.
 let repere = fs.readFileSync(reperePath, 'utf8');
 if (!repere.includes(MARKER)) {
-  repere = replaceOnce(
-    repere,
-    'async function fetchImage() {',
-    helper + 'async function fetchImage() {',
-    'helper timeout repere'
-  );
+  repere = replaceOnce(repere, 'async function fetchImage() {', helper + 'async function fetchImage() {', 'helper timeout repere');
 
   const oldPrepare = `    const prepared = await prepareWAMessageMedia(\n      { image: imageBuffer },\n      { upload: sock.waUploadToServer }\n    );`;
   const newPrepare = `    const prepared = await withInteractiveTimeout(\n      prepareWAMessageMedia(\n        { image: imageBuffer },\n        { upload: sock.waUploadToServer }\n      ),\n      4500,\n      'repere media upload'\n    );`;
@@ -135,50 +204,27 @@ if (!repere.includes(MARKER)) {
   );
 
   fs.writeFileSync(reperePath, repere);
-  console.log('[delivery-guard] ✅ repere/repère protégés contre les blocages interactifs');
-} else {
-  console.log('[delivery-guard] repere déjà protégé');
+  console.log('[delivery-guard] ✅ repere/repère protégé contre les blocages interactifs');
 }
 
 for (const file of [menuPath, reperePath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
-  if (check.status !== 0) {
-    throw new Error(`[delivery-guard] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
-  }
+  if (check.status !== 0) throw new Error(`[delivery-guard] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
 }
 
 const finalMenu = fs.readFileSync(menuPath, 'utf8');
 const finalRepere = fs.readFileSync(reperePath, 'utf8');
-
-for (const marker of [
-  MARKER,
-  ALLMENU_MARKER,
-  "3500, 'menu image'",
-  "4500,\n        'menu media upload'",
-  "'menu interactive relay'",
-]) {
+for (const marker of [MARKER, ALLMENU_MARKER, '[PRIVATE SAFE QUOTED]', "'menu interactive relay'", 'fallback newsletter indisponible']) {
   if (!finalMenu.includes(marker)) throw new Error(`[delivery-guard] garde-fou menu absent: ${marker}`);
 }
-
 const allmenuStart = finalMenu.indexOf(`// ${ALLMENU_MARKER}`);
-const allmenuEnd = allmenuStart === -1 ? -1 : finalMenu.indexOf('const styleMatch = body.match(', allmenuStart);
+const allmenuEnd = allmenuStart < 0 ? -1 : finalMenu.indexOf('const styleMatch = body.match(', allmenuStart);
 const allmenuBlock = allmenuStart >= 0 && allmenuEnd > allmenuStart ? finalMenu.slice(allmenuStart, allmenuEnd) : '';
-if (!allmenuBlock.includes('await sock.sendMessage(')) {
-  throw new Error('[delivery-guard] allmenu ne possède pas son envoi standard');
+if (!allmenuBlock.includes('sendStyledMenuMessage(') || !allmenuBlock.includes('await sock.sendMessage(')) {
+  throw new Error('[delivery-guard] allmenu hybride incomplet');
 }
-if (allmenuBlock.includes('sendStyledMenuMessage(') || allmenuBlock.includes('relayMessage(')) {
-  throw new Error('[delivery-guard] allmenu dépend encore de la livraison interactive');
-}
-
-for (const marker of [
-  MARKER,
-  "3500, 'repere image'",
-  "'repere media upload'",
-  "'repere interactive relay'",
-  'fallbackText',
-  'await sock.sendMessage(',
-]) {
+for (const marker of [MARKER, "3500, 'repere image'", "'repere media upload'", "'repere interactive relay'", 'fallbackText']) {
   if (!finalRepere.includes(marker)) throw new Error(`[delivery-guard] garde-fou repere absent: ${marker}`);
 }
 
-console.log('[delivery-guard] ✅ livraison bornée: menu/repere interactifs avec fallback; allmenu standard idempotent');
+console.log('[delivery-guard] ✅ menu/repere: interactif borné + fallback; allmenu: premier chunk enrichi + suites fiables');
