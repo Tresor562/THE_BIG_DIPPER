@@ -35,12 +35,14 @@ const required = [
   '[PRIVATE SEND SAFETY]',
   '[QUOTED SEND RETRY]',
   '[RELAY RESPONSE WATCH]',
+  '[PENDING RESPONSE WATCH]',
   '[COMMAND RESPONSE WATCHDOG]',
   '[COMMAND ERROR RESPONSE]',
   '[COMMAND RESPONSE CONTEXT]',
   'commandResponseStorage.run(',
   'responseTrace.responses += 1',
   'relayTrace.responses += 1',
+  'commandResponseTrace.pending > 0',
 ];
 for (const marker of required) {
   if (!finalHandler.includes(marker)) {
@@ -48,4 +50,4 @@ for (const marker of required) {
   }
 }
 
-console.log('[response-style-deploy] ✅ sendMessage + relayMessage suivis; anti-silence appliqué au bot déployé');
+console.log('[response-style-deploy] ✅ send/relay/pending suivis; anti-silence appliqué au bot déployé');
