@@ -29,21 +29,55 @@ function replaceOnce(source, search, replacement, label) {
   return source.replace(search, replacement);
 }
 
+function patchMenuGeneratedImagePriority(source) {
+  const start = source.indexOf('async function sendStyledMenuMessage(');
+  if (start === -1) throw new Error('[welcome-card] sendStyledMenuMessage introuvable');
+
+  // La fin est le début de la section qui suit l'expéditeur visuel. On ne
+  // modifie que cette fonction afin de ne jamais toucher aux autres usages
+  // de imageBuffer dans menu.js.
+  const navMarker = '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES';
+  const end = source.indexOf(navMarker, start);
+  if (end === -1) throw new Error('[welcome-card] fin de sendStyledMenuMessage introuvable');
+
+  let sender = source.slice(start, end);
+
+  if (!sender.includes('imageBuffer: providedImageBuffer = null,')) {
+    const optionNeedle = '    withImage = true,\n';
+    const count = sender.split(optionNeedle).length - 1;
+    if (count !== 1) throw new Error(`[welcome-card] option withImage: attendu 1 occurrence, trouvé ${count}`);
+    sender = sender.replace(optionNeedle, optionNeedle + '    imageBuffer: providedImageBuffer = null,\n');
+    console.log('[welcome-card] imageBuffer direct dans sendStyledMenuMessage appliqué');
+  } else {
+    console.log('[welcome-card] imageBuffer direct dans sendStyledMenuMessage déjà appliqué');
+  }
+
+  const alreadyPrioritized = sender.includes('let imageBuffer = providedImageBuffer || null;')
+    && sender.includes('if (withImage && !imageBuffer) {');
+
+  if (!alreadyPrioritized) {
+    const decl = 'let imageBuffer = null;';
+    const cond = 'if (withImage) {';
+    const declCount = sender.split(decl).length - 1;
+    const condCount = sender.split(cond).length - 1;
+    if (declCount !== 1) throw new Error(`[welcome-card] déclaration imageBuffer dans expéditeur: attendu 1 occurrence, trouvé ${declCount}`);
+    if (condCount !== 1) throw new Error(`[welcome-card] condition withImage dans expéditeur: attendu 1 occurrence, trouvé ${condCount}`);
+
+    sender = sender.replace(decl, 'let imageBuffer = providedImageBuffer || null;');
+    sender = sender.replace(cond, 'if (withImage && !imageBuffer) {');
+    console.log('[welcome-card] priorité image générée appliquée structurellement');
+  } else {
+    console.log('[welcome-card] priorité image générée déjà appliquée');
+  }
+
+  return source.slice(0, start) + sender + source.slice(end);
+}
+
 // ── 1) Étendre l'expéditeur interactif du menu pour accepter une image
-// déjà construite (welcome/goodbye) sans changer son comportement existant.
+// déjà construite (welcome/goodbye), sans dépendre de la mise en forme du
+// bloc réseau que interactive-delivery-guard.js peut enrichir avec timeouts.
 let menu = fs.readFileSync(menuPath, 'utf8');
-menu = replaceOnce(
-  menu,
-  "    withImage = true,\n  } = options;",
-  "    withImage = true,\n    imageBuffer: providedImageBuffer = null,\n  } = options;",
-  'imageBuffer direct dans sendStyledMenuMessage'
-);
-menu = replaceOnce(
-  menu,
-  "  let imageBuffer = null;\n  if (withImage) {\n    imageBuffer = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;\n    if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);\n  }",
-  "  let imageBuffer = providedImageBuffer || null;\n  if (withImage && !imageBuffer) {\n    imageBuffer = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;\n    if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);\n  }",
-  'priorité image générée'
-);
+menu = patchMenuGeneratedImagePriority(menu);
 
 if (!menu.includes('module.exports.sendStyledMenuMessage = sendStyledMenuMessage;')) {
   menu += "\n\n// API visuelle partagée : welcome/goodbye réutilisent exactement le moteur du menu.\nmodule.exports.sendStyledMenuMessage = sendStyledMenuMessage;\nmodule.exports.getImageBufferForStyle = getImageBufferForStyle;\n";
@@ -136,6 +170,18 @@ for (const file of [welcomeCardPath, menuPath, handlerPath]) {
   if (check.status !== 0) {
     throw new Error(`[welcome-card] syntaxe invalide ${path.basename(file)}: ${check.stderr || check.stdout}`);
   }
+}
+
+// Garde-fou final : la fonction du menu doit accepter le buffer généré tout
+// en conservant les timeouts interactifs déjà installés par le patch précédent.
+const finalMenu = fs.readFileSync(menuPath, 'utf8');
+for (const marker of [
+  'imageBuffer: providedImageBuffer = null,',
+  'let imageBuffer = providedImageBuffer || null;',
+  'if (withImage && !imageBuffer) {',
+  '[INTERACTIVE DELIVERY TIMEOUT]',
+]) {
+  if (!finalMenu.includes(marker)) throw new Error(`[welcome-card] garde-fou menu absent: ${marker}`);
 }
 
 console.log('[welcome-card] ✅ cartes dynamiques welcome/goodbye branchées au style actif + CTA chaîne');
