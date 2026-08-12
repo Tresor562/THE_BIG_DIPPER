@@ -80,7 +80,7 @@ if (!serverSrc.includes("url.pathname === '/session/delete'")) {
     '',
     '  const phoneNumber = body?.phoneNumber;',
     '  if (!phoneNumber) {',
-    "    return sendJSON(res, 400, { error: 'MISSING_PHONE_NUMBER', message: 'Le champ \\"phoneNumber\\" est requis dans le corps JSON.' });",
+    "    return sendJSON(res, 400, { error: 'MISSING_PHONE_NUMBER', message: 'Le champ phoneNumber est requis dans le corps JSON.' });",
     '  }',
     '',
     '  try {',
