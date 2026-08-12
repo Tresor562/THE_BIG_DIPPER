@@ -40,10 +40,11 @@ async function fetchImage() {
   try {
     const res = await axios.get(IMAGE_URL, {
       responseType: 'arraybuffer',
-      timeout: 15000,
+      timeout: 8000,
       maxRedirects: 5,
       headers: { 'User-Agent': 'Mozilla/5.0' },
     });
+    if (!res.data || res.data.byteLength < 256) return null;
     return Buffer.from(res.data);
   } catch (err) {
     console.warn('[repere] ⚠️ Image indisponible:', err.message);
@@ -111,10 +112,28 @@ async function sendInteractiveRepere(sock, jid, caption, imageBuffer, quoted) {
   return generated;
 }
 
+async function sendStandardNewsletterFallback(sock, jid, text, imageBuffer, quoted) {
+  const opts = quoted && jid.endsWith('@g.us') ? { quoted } : undefined;
+  const contextInfo = getContextInfo();
+  if (imageBuffer && text.length <= 1000) {
+    return sock.sendMessage(jid, { image: imageBuffer, caption: text, contextInfo }, opts);
+  }
+  if (imageBuffer) {
+    await sock.sendMessage(jid, { image: imageBuffer, caption: '📢 NEXUS TECH', contextInfo }, opts);
+  }
+  return sock.sendMessage(jid, { text, contextInfo }, opts);
+}
+
+async function sendHardFallback(sock, jid, text, imageBuffer, quoted) {
+  const opts = quoted && jid.endsWith('@g.us') ? { quoted } : undefined;
+  if (imageBuffer && text.length <= 1000) {
+    return sock.sendMessage(jid, { image: imageBuffer, caption: text }, opts);
+  }
+  return sock.sendMessage(jid, { text }, opts);
+}
+
 module.exports = {
   name: 'repere',
-  // commandLoader normalise en minuscules mais conserve les accents.
-  // `repère` doit donc être déclaré explicitement.
   aliases: ['Repere', 'REPERE', 'rep', 'repère'],
   category: '👑 Owner',
   ownerOnly: true,
@@ -144,33 +163,34 @@ module.exports = {
     const imageBuffer = await fetchImage();
     const quoted = from?.endsWith('@g.us') ? msg : null;
 
+    // Niveau 1 : rendu complet demandé (image + effet newsletter + CTA).
     try {
       await sendInteractiveRepere(sock, from, caption, imageBuffer, quoted);
       console.log('[repere] ✅ Nexus Tech + newsletter + CTA envoyés dans:', from);
       return;
-    } catch (err) {
-      console.warn('[repere] ⚠️ CTA interactif indisponible, fallback standard:', err.message);
+    } catch (interactiveErr) {
+      console.warn('[repere] ⚠️ Interactif indisponible → fallback newsletter:', interactiveErr.message);
     }
 
     const { channelUrl } = getChannelConfig();
     const fallbackText = `${caption}\n\n📢 *Rejoindre la chaîne :* ${channelUrl}`;
 
+    // Niveau 2 : image + newsletter sans nativeFlow.
     try {
-      if (imageBuffer) {
-        await sock.sendMessage(from, {
-          image: imageBuffer,
-          caption: fallbackText,
-          contextInfo: getContextInfo(),
-        }, quoted ? { quoted } : undefined);
-      } else {
-        await sock.sendMessage(from, {
-          text: fallbackText,
-          contextInfo: getContextInfo(),
-        }, quoted ? { quoted } : undefined);
-      }
-    } catch (err2) {
-      console.error('[repere] ❌ Fallback échoué:', err2.message);
-      await reply(`*❌ Erreur repere :* ${err2.message.slice(0, 80)}`);
+      await sendStandardNewsletterFallback(sock, from, fallbackText, imageBuffer, quoted);
+      console.log('[repere] ✅ fallback newsletter envoyé dans:', from);
+      return;
+    } catch (newsletterErr) {
+      console.warn('[repere] ⚠️ Newsletter standard indisponible → fallback brut:', newsletterErr.message);
+    }
+
+    // Niveau 3 : aucune metadata avancée. Cette voie doit rester indépendante.
+    try {
+      await sendHardFallback(sock, from, fallbackText, imageBuffer, quoted);
+      console.log('[repere] ✅ fallback brut envoyé dans:', from);
+    } catch (hardErr) {
+      console.error('[repere] ❌ Tous les chemins ont échoué:', hardErr.message);
+      await reply(`*❌ Erreur repere :* ${hardErr.message.slice(0, 80)}`);
     }
   },
 };
