@@ -118,9 +118,8 @@ async function sendStandardNewsletterFallback(sock, jid, text, imageBuffer, quot
   if (imageBuffer && text.length <= 1000) {
     return sock.sendMessage(jid, { image: imageBuffer, caption: text, contextInfo }, opts);
   }
-  if (imageBuffer) {
-    await sock.sendMessage(jid, { image: imageBuffer, caption: '📢 NEXUS TECH', contextInfo }, opts);
-  }
+  // Un seul envoi : pour un texte long, on sacrifie l'image plutôt que de
+  // créer une seconde bulle qui répéterait la même commande.
   return sock.sendMessage(jid, { text, contextInfo }, opts);
 }
 
@@ -172,10 +171,11 @@ module.exports = {
       console.warn('[repere] ⚠️ Interactif indisponible → fallback newsletter:', interactiveErr.message);
     }
 
-    const { channelUrl } = getChannelConfig();
-    const fallbackText = `${caption}\n\n📢 *Rejoindre la chaîne :* ${channelUrl}`;
+    // Aucun lien brut dans le corps du message : les URLs restent réservées
+    // aux boutons CTA lorsque le rendu interactif est disponible.
+    const fallbackText = caption;
 
-    // Niveau 2 : image + newsletter sans nativeFlow.
+    // Niveau 2 : un seul message avec effet newsletter, sans URL visible.
     try {
       await sendStandardNewsletterFallback(sock, from, fallbackText, imageBuffer, quoted);
       console.log('[repere] ✅ fallback newsletter envoyé dans:', from);
@@ -184,7 +184,7 @@ module.exports = {
       console.warn('[repere] ⚠️ Newsletter standard indisponible → fallback brut:', newsletterErr.message);
     }
 
-    // Niveau 3 : aucune metadata avancée. Cette voie doit rester indépendante.
+    // Niveau 3 : une seule bulle brute, toujours sans lien visible.
     try {
       await sendHardFallback(sock, from, fallbackText, imageBuffer, quoted);
       console.log('[repere] ✅ fallback brut envoyé dans:', from);
