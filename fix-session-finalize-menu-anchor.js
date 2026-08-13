@@ -1,0 +1,14 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const file = path.join(__dirname, 'session-isolation-finalize.js');
+let s = fs.readFileSync(file, 'utf8');
+const old = "  const old='if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);';";
+const neu = "  const old=menu.includes('if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);') ? 'if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);' : 'if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);';";
+if (s.includes(old)) s = s.replace(old, neu);
+const throwLine = "  if(!menu.includes(old)) throw new Error('[session-isolation-finalize] sender image anchor absent');\n  menu=menu.replace(old,neu);";
+const tolerant = "  if(menu.includes(old)) menu=menu.replace(old,neu);\n  else if (!menu.includes('[SESSION MENU IMAGE FINAL]')) {\n    const visualAnchor = 'imageBuffer = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;';\n    if (!menu.includes(visualAnchor)) throw new Error('[session-isolation-finalize] aucun sender image compatible');\n    menu = menu.replace(visualAnchor, visualAnchor + `\\n    const _sessionMenuImage = sessionPreferences.get('menuImagePath', null); // [SESSION MENU IMAGE FINAL]\\n    if (!imageBuffer && _sessionMenuImage && fs.existsSync(_sessionMenuImage)) {\\n      try { imageBuffer = fs.readFileSync(_sessionMenuImage); } catch (_) {}\\n    }`);\n  }";
+if (!s.includes(throwLine) && !s.includes('aucun sender image compatible')) throw new Error('[fix-finalize] finalizer anchor inattendu');
+if (s.includes(throwLine)) s = s.replace(throwLine, tolerant);
+fs.writeFileSync(file, s, 'utf8');
+console.log('[fix-finalize] finalizer menu compatible avec le sender visuel');
