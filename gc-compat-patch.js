@@ -93,3 +93,17 @@ console.log('[gc-compat] ✅ compatibilité legacy validée avant unification');
 require('./group-status-unified-patch');
 require('./group-status-baileys-6722-fix');
 require('./group-status-engine-test-patch');
+
+// Le générateur de test historique attendait encore le champ V2. Après sa
+// génération, aligner le fichier final sur le schéma réellement fourni par
+// Baileys 6.7.22 afin que le test valide le bon protocole, pas une API future.
+const groupStatusTest = path.join(BOT, 'tests', 'group-status-engine.test.js');
+if (fs.existsSync(groupStatusTest)) {
+  let testSrc = fs.readFileSync(groupStatusTest, 'utf8');
+  if (testSrc.includes('groupStatusMessageV2')) {
+    testSrc = testSrc.replaceAll('groupStatusMessageV2', 'groupStatusMessage');
+    fs.writeFileSync(groupStatusTest, testSrc, 'utf8');
+  }
+  const testCheck = spawnSync(process.execPath, ['--check', groupStatusTest], { encoding: 'utf8' });
+  if (testCheck.status !== 0) throw new Error('[gc-compat] syntaxe test group-status: ' + (testCheck.stderr || testCheck.stdout));
+}
