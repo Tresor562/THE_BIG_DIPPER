@@ -9,8 +9,11 @@ const gcPath = path.join(BOT, 'commands', 'group_management', 'gc.js');
 const gc2Path = path.join(BOT, 'commands', 'group_management', 'gc2.js');
 const gc3Path = path.join(BOT, 'commands', 'group_management', 'gc3.js');
 const gc4Path = path.join(BOT, 'commands', 'group_management', 'gc4.js');
+const welcomePath = path.join(BOT, 'commands', 'group_management', 'welcome.js');
+const goodbyePath = path.join(BOT, 'commands', 'group_management', 'goodbye.js');
+const handlerPath = path.join(BOT, 'handler.js');
 
-for (const file of [gcPath, gc2Path, gc3Path, gc4Path]) {
+for (const file of [gcPath, gc2Path, gc3Path, gc4Path, welcomePath, goodbyePath, handlerPath]) {
   if (!fs.existsSync(file)) throw new Error(`[gc-compat] fichier absent: ${file}`);
 }
 
@@ -28,8 +31,19 @@ if (gc.includes(oldAdminCheck)) {
   throw new Error('[gc-compat] bloc admin de gc.js introuvable');
 }
 
-// Vérifier que les adaptateurs n'ont pas changé la logique en objets commande
-// invalides : le loader DIPPER exige name + execute.
+// Welcome/goodbye ne modifient pas la structure du groupe : ils persistent
+// uniquement un réglage et répondent au chat. Les gc* publient des statuts de
+// groupe et gèrent déjà leur contrôle utilisateur en interne. Aucun de ces
+// chemins ne doit être bloqué uniquement parce que le bot n'est pas admin.
+for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]) {
+  let src = fs.readFileSync(file, 'utf8');
+  if (/\bbotAdminNeeded\s*:\s*true\b/.test(src)) {
+    src = src.replace(/\bbotAdminNeeded\s*:\s*true\s*,?/g, 'botAdminNeeded: false,');
+    fs.writeFileSync(file, src);
+    console.log(`[gc-compat] ${path.basename(file)}: faux besoin bot-admin retiré`);
+  }
+}
+
 const gc2 = fs.readFileSync(gc2Path, 'utf8');
 const gc3 = fs.readFileSync(gc3Path, 'utf8');
 const gc4 = fs.readFileSync(gc4Path, 'utf8');
@@ -50,11 +64,33 @@ if (!gc4.includes("name: 'groupstatus4'") || !gc4.includes("aliases: ['gc4']")) 
   throw new Error('[gc-compat] gc4 a été modifié de manière inattendue');
 }
 
-for (const file of [gcPath, gc2Path, gc3Path, gc4Path]) {
+// Invariants d'accès du compte connecté : les messages fromMe / owner local
+// restent reconnus comme isMe, les commandes connues sont acceptées sans
+// préfixe, et les restrictions owner/mod/admin ne doivent pas écarter isMe.
+const handler = fs.readFileSync(handlerPath, 'utf8');
+for (const marker of [
+  "const isMe      = isSuperMe || isOwner(sender) || msg.key.fromMe || _isSessionOwner;",
+  'if (!isCommand && isMe && body)',
+  'commands.has(_firstWord)',
+  'const rawArgs    = (_ownerNoPrefix ? body : body.slice(config.prefix.length))',
+  'if (command.ownerOnly && !isMe)',
+  'if (command.modOnly && !isMod(sender) && !isMe)',
+  'if (command.adminOnly && !isMe && !(await isAdmin(sock, sender, from, groupMetadata)))',
+]) {
+  if (!handler.includes(marker)) throw new Error(`[gc-compat] invariant compte connecté absent: ${marker}`);
+}
+
+for (const file of [gcPath, gc2Path, gc3Path, gc4Path, welcomePath, goodbyePath, handlerPath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (check.status !== 0) {
     throw new Error(`[gc-compat] syntaxe invalide ${path.basename(file)}: ${check.stderr || check.stdout}`);
   }
 }
 
-console.log('[gc-compat] ✅ gc/gc2/gc3/gc4 compatibles avec le loader; logique interne préservée');
+for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]) {
+  if (/\bbotAdminNeeded\s*:\s*true\b/.test(fs.readFileSync(file, 'utf8'))) {
+    throw new Error(`[gc-compat] besoin bot-admin inattendu: ${path.basename(file)}`);
+  }
+}
+
+console.log('[gc-compat] ✅ gc/gc2/gc3/gc4 + welcome/goodbye compatibles; accès compte connecté validé');
