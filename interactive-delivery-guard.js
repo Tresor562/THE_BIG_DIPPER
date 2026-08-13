@@ -8,108 +8,352 @@ const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const menuPath = path.join(BOT, 'commands', 'general_tools', 'menu.js');
 const reperePath = path.join(BOT, 'commands', 'bot_sovereignty', 'repere.js');
-const MARKER = '[INTERACTIVE DELIVERY TIMEOUT]';
-const ALLMENU_MARKER = '[ALLMENU HYBRID DELIVERY]';
+const DIRECT_MARKER = '[DIRECT NATIVE FLOW DELIVERY]';
+const TIMEOUT_MARKER = '[INTERACTIVE DELIVERY TIMEOUT]';
+const ALLMENU_MARKER = '[ALLMENU SINGLE RICH DELIVERY]';
 
 for (const file of [menuPath, reperePath]) {
   if (!fs.existsSync(file)) throw new Error(`[delivery-guard] fichier absent: ${file}`);
 }
 
-function replaceOnce(source, search, replacement, label) {
-  const count = source.split(search).length - 1;
-  if (count !== 1) throw new Error(`[delivery-guard] ${label}: attendu 1 occurrence, trouvé ${count}`);
-  return source.replace(search, replacement);
+function replaceRegion(source, startNeedle, endNeedle, replacement, label) {
+  const start = source.indexOf(startNeedle);
+  const end = start < 0 ? -1 : source.indexOf(endNeedle, start);
+  if (start < 0 || end < 0 || end <= start) {
+    throw new Error(`[delivery-guard] ${label}: région introuvable`);
+  }
+  return source.slice(0, start) + replacement + source.slice(end);
 }
 
-function patchMenuPrivateSafety(source) {
-  const start = source.indexOf('async function sendStyledMenuMessage(');
-  const end = start < 0 ? -1 : source.indexOf('// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES', start);
-  if (start < 0 || end < 0) throw new Error('[delivery-guard] sendStyledMenuMessage introuvable');
+function directMenuSender() {
+  return `async function sendStyledMenuMessage(sock, jid, options = {}) {
+  // ${DIRECT_MARKER}
+  // ${TIMEOUT_MARKER}
+  const {
+    text = '',
+    style = 0,
+    imageUrl = null,
+    quoted = null,
+    mentions = [],
+    withImage = true,
+    imageBuffer: providedImageBuffer = null,
+  } = options;
 
-  let sender = source.slice(start, end);
-  if (!sender.includes('[PRIVATE SAFE QUOTED]')) {
-    const channelLine = "  const channelUrl = config.social?.whatsappChannel || 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';";
-    const insert = `${channelLine}\n  // [PRIVATE SAFE QUOTED] Les quotes sont conservées en groupe seulement.\n  const safeQuotedMessage = quoted && jid.endsWith('@g.us') ? quoted : undefined;\n  const safeQuotedOptions = safeQuotedMessage ? { quoted: safeQuotedMessage } : undefined;`;
-    if (!sender.includes(channelLine)) throw new Error('[delivery-guard] channelUrl menu introuvable');
-    sender = sender.replace(channelLine, insert);
-    sender = sender.replace('{ quoted: quoted || undefined, userJid: sock.user?.id }', '{ quoted: safeQuotedMessage, userJid: sock.user?.id }');
+  const channelUrl = config.social?.whatsappChannel || 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
+  const safeQuotedMessage = quoted && jid.endsWith('@g.us') ? quoted : undefined;
+  const safeQuotedOptions = safeQuotedMessage ? { quoted: safeQuotedMessage } : undefined;
+
+  const withTimeout = async (promise, ms, label) => {
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve(promise),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(label + ' timeout après ' + ms + 'ms')), ms);
+          if (timer.unref) timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const waitForAck = (messageId, ms = 3200) => {
+    if (!messageId || !sock?.ev || typeof sock.ev.on !== 'function') return Promise.resolve(true);
+    return new Promise(resolve => {
+      let settled = false;
+      let timer = null;
+      const detach = () => {
+        if (typeof sock.ev.off === 'function') sock.ev.off('messages.update', onUpdate);
+        else if (typeof sock.ev.removeListener === 'function') sock.ev.removeListener('messages.update', onUpdate);
+      };
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        detach();
+        resolve(value);
+      };
+      const onUpdate = updates => {
+        for (const item of (updates || [])) {
+          if (item?.key?.id !== messageId) continue;
+          const status = Number(item?.update?.status);
+          if (!Number.isFinite(status) || status >= 2) return finish(true);
+        }
+      };
+      sock.ev.on('messages.update', onUpdate);
+      timer = setTimeout(() => finish(false), ms);
+      if (timer.unref) timer.unref();
+    });
+  };
+
+  const contextInfo = {
+    mentionedJid: mentions.filter(Boolean),
+    forwardingScore: 1,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: config.newsletterJid || '120363411005383995@newsletter',
+      newsletterName: config.botName || '𝐓𝐇𝐄 𝐁𝐈𝐆 𝐃𝐈𝐏𝐏𝐄𝐑',
+      serverMessageId: -1,
+    },
+  };
+
+  let imageBuffer = providedImageBuffer || null;
+  if (withImage && !imageBuffer) {
+    try {
+      imageBuffer = await withTimeout((async () => {
+        const custom = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;
+        return custom || await getImageBufferForStyle(style);
+      })(), 3500, 'menu image');
+    } catch (imageErr) {
+      console.warn('[Menu] image indisponible:', imageErr.message);
+      imageBuffer = null;
+    }
   }
 
-  const oldFallback = `  } catch (err) {
-    console.warn('[Menu] interactive CTA indisponible, fallback standard:', err.message);
-    const fallbackText = \`${'${text}'}\\n\\n📢 *Chaîne officielle :* ${'${channelUrl}'}\`;
-    if (imageBuffer && fallbackText.length <= 1000) {
-      return sock.sendMessage(
-        jid,
-        { image: imageBuffer, caption: fallbackText, contextInfo },
-        quoted ? { quoted } : undefined
-      );
-    }
+  const buildRelayNodes = () => {
+    const bizNode = {
+      tag: 'biz',
+      attrs: {
+        actual_actors: '2',
+        host_storage: '2',
+        privacy_mode_ts: String(Math.floor(Date.now() / 1000) - 77980457),
+      },
+      content: [
+        {
+          tag: 'interactive',
+          attrs: { type: 'native_flow', v: '1' },
+          content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+        },
+        { tag: 'quality_control', attrs: { source_type: 'third_party' } },
+      ],
+    };
+    return jid.endsWith('@g.us')
+      ? [bizNode]
+      : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
+  };
+
+  try {
+    let header = proto.Message.InteractiveMessage.Header.create({
+      title: '', subtitle: '', hasMediaAttachment: false,
+    });
+
     if (imageBuffer) {
-      await sock.sendMessage(
-        jid,
-        { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo },
-        quoted ? { quoted } : undefined
+      const prepared = await withTimeout(
+        prepareWAMessageMedia({ image: imageBuffer }, { upload: sock.waUploadToServer }),
+        4500,
+        'menu media upload'
       );
+      header = proto.Message.InteractiveMessage.Header.create({
+        ...prepared,
+        title: '', subtitle: '', hasMediaAttachment: true,
+      });
     }
-    return sock.sendMessage(
+
+    const interactiveMessage = proto.Message.InteractiveMessage.create({
+      body: proto.Message.InteractiveMessage.Body.create({ text }),
+      footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
+      header,
+      nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+        buttons: [{
+          name: 'cta_url',
+          buttonParamsJson: JSON.stringify({
+            display_text: '📢 Rejoindre la chaîne',
+            url: channelUrl,
+            merchant_url: channelUrl,
+          }),
+        }],
+        messageParamsJson: '{}',
+        messageVersion: 1,
+      }),
+      contextInfo,
+    });
+
+    // IMPORTANT : pas de viewOnceMessage. Le native-flow est relayé directement
+    // avec les nœuds biz attendus par WhatsApp Web MD.
+    const generated = generateWAMessageFromContent(
       jid,
-      { text: fallbackText, contextInfo },
-      quoted ? { quoted } : undefined
+      { interactiveMessage },
+      { quoted: safeQuotedMessage, userJid: sock.user?.id }
     );
-  }
-}`;
 
-  const newFallback = `  } catch (err) {
-    console.warn('[Menu] interactif indisponible → fallback newsletter:', err.message);
-    const fallbackText = \`${'${text}'}\\n\\n📢 *Chaîne officielle :* ${'${channelUrl}'}\`;
+    const ackPromise = waitForAck(generated.key.id);
+    await withTimeout(
+      sock.relayMessage(jid, generated.message, {
+        messageId: generated.key.id,
+        additionalNodes: buildRelayNodes(),
+      }),
+      5000,
+      'menu native-flow relay'
+    );
+    const acked = await ackPromise;
+    if (!acked) throw new Error('menu native-flow sans ACK WhatsApp');
+    return generated;
+  } catch (interactiveErr) {
+    console.warn('[Menu] native-flow non confirmé → fallback standard:', interactiveErr.message);
+    const fallbackText = text + '\n\n📢 *Chaîne officielle :* ' + channelUrl;
 
-    // Niveau 2 : envoi standard avec image + effet newsletter. Aucun relayMessage.
+    // Fallback 1 : message standard avec effet newsletter. Pour les longs
+    // contenus (allmenu), on garde UNE seule bulle texte au lieu de séparer.
     try {
       if (imageBuffer && fallbackText.length <= 1000) {
-        return await sock.sendMessage(
-          jid,
-          { image: imageBuffer, caption: fallbackText, contextInfo },
-          safeQuotedOptions
+        return await withTimeout(
+          sock.sendMessage(jid, { image: imageBuffer, caption: fallbackText, contextInfo }, safeQuotedOptions),
+          5000,
+          'menu fallback newsletter image'
         );
       }
-      if (imageBuffer) {
-        await sock.sendMessage(
-          jid,
-          { image: imageBuffer, caption: '📚 THE BIG DIPPER', contextInfo },
-          safeQuotedOptions
-        );
-      }
-      return await sock.sendMessage(jid, { text: fallbackText, contextInfo }, safeQuotedOptions);
+      return await withTimeout(
+        sock.sendMessage(jid, { text: fallbackText, contextInfo }, safeQuotedOptions),
+        5000,
+        'menu fallback newsletter texte'
+      );
     } catch (newsletterErr) {
-      // Niveau 3 : filet de sécurité absolu, sans metadata newsletter ni quote privé.
-      console.warn('[Menu] fallback newsletter indisponible → envoi brut:', newsletterErr.message);
-      if (imageBuffer && fallbackText.length <= 1000) {
-        return sock.sendMessage(jid, { image: imageBuffer, caption: fallbackText }, safeQuotedOptions);
-      }
-      return sock.sendMessage(jid, { text: fallbackText }, safeQuotedOptions);
+      console.warn('[Menu] fallback newsletter indisponible → fallback brut:', newsletterErr.message);
+      return withTimeout(
+        sock.sendMessage(jid, { text: fallbackText }, safeQuotedOptions),
+        5000,
+        'menu fallback brut'
+      );
     }
   }
-}`;
+}
 
-  if (sender.includes("console.warn('[Menu] interactive CTA indisponible, fallback standard:'")) {
-    if (!sender.includes(oldFallback)) throw new Error('[delivery-guard] ancien fallback menu non reconnu');
-    sender = sender.replace(oldFallback, newFallback);
+`;
+}
+
+function directRepereSender() {
+  return `async function sendInteractiveRepere(sock, jid, caption, imageBuffer, quoted) {
+  // ${DIRECT_MARKER}
+  // ${TIMEOUT_MARKER}
+  const { channelUrl } = getChannelConfig();
+
+  const withTimeout = async (promise, ms, label) => {
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve(promise),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(label + ' timeout après ' + ms + 'ms')), ms);
+          if (timer.unref) timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const waitForAck = (messageId, ms = 3200) => {
+    if (!messageId || !sock?.ev || typeof sock.ev.on !== 'function') return Promise.resolve(true);
+    return new Promise(resolve => {
+      let settled = false;
+      let timer = null;
+      const detach = () => {
+        if (typeof sock.ev.off === 'function') sock.ev.off('messages.update', onUpdate);
+        else if (typeof sock.ev.removeListener === 'function') sock.ev.removeListener('messages.update', onUpdate);
+      };
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        detach();
+        resolve(value);
+      };
+      const onUpdate = updates => {
+        for (const item of (updates || [])) {
+          if (item?.key?.id !== messageId) continue;
+          const status = Number(item?.update?.status);
+          if (!Number.isFinite(status) || status >= 2) return finish(true);
+        }
+      };
+      sock.ev.on('messages.update', onUpdate);
+      timer = setTimeout(() => finish(false), ms);
+      if (timer.unref) timer.unref();
+    });
+  };
+
+  let header = proto.Message.InteractiveMessage.Header.create({
+    title: '', subtitle: '', hasMediaAttachment: false,
+  });
+  if (imageBuffer) {
+    const prepared = await withTimeout(
+      prepareWAMessageMedia({ image: imageBuffer }, { upload: sock.waUploadToServer }),
+      4500,
+      'repere media upload'
+    );
+    header = proto.Message.InteractiveMessage.Header.create({
+      ...prepared,
+      title: '', subtitle: '', hasMediaAttachment: true,
+    });
   }
 
-  return source.slice(0, start) + sender + source.slice(end);
+  const interactiveMessage = proto.Message.InteractiveMessage.create({
+    body: proto.Message.InteractiveMessage.Body.create({ text: caption }),
+    footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
+    header,
+    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+      buttons: [{
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({
+          display_text: '📢 Rejoindre la chaîne',
+          url: channelUrl,
+          merchant_url: channelUrl,
+        }),
+      }],
+      messageParamsJson: '{}',
+      messageVersion: 1,
+    }),
+    contextInfo: getContextInfo(),
+  });
+
+  const safeQuoted = quoted && jid.endsWith('@g.us') ? quoted : undefined;
+  const generated = generateWAMessageFromContent(
+    jid,
+    { interactiveMessage },
+    { quoted: safeQuoted, userJid: sock.user?.id }
+  );
+
+  const bizNode = {
+    tag: 'biz',
+    attrs: {
+      actual_actors: '2',
+      host_storage: '2',
+      privacy_mode_ts: String(Math.floor(Date.now() / 1000) - 77980457),
+    },
+    content: [
+      {
+        tag: 'interactive',
+        attrs: { type: 'native_flow', v: '1' },
+        content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+      },
+      { tag: 'quality_control', attrs: { source_type: 'third_party' } },
+    ],
+  };
+  const additionalNodes = jid.endsWith('@g.us')
+    ? [bizNode]
+    : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
+
+  const ackPromise = waitForAck(generated.key.id);
+  await withTimeout(
+    sock.relayMessage(jid, generated.message, {
+      messageId: generated.key.id,
+      additionalNodes,
+    }),
+    5000,
+    'repere native-flow relay'
+  );
+  const acked = await ackPromise;
+  if (!acked) throw new Error('repere native-flow sans ACK WhatsApp');
+  return generated;
+}
+
+`;
 }
 
 function replaceAllMenuBlock(source) {
-  if (source.includes(ALLMENU_MARKER)) {
-    console.log('[delivery-guard] allmenu hybride déjà installé');
-    return source;
-  }
-
   const token = "if (body === 'allmenu') {";
   const startToken = source.indexOf(token);
   if (startToken === -1) throw new Error('[delivery-guard] branche allmenu introuvable');
-
   const start = source.lastIndexOf('\n', startToken) + 1;
   const stylePos = source.indexOf('const styleMatch = body.match(', startToken);
   if (stylePos === -1) throw new Error('[delivery-guard] fin de branche allmenu introuvable');
@@ -124,107 +368,70 @@ function replaceAllMenuBlock(source) {
     `${indent}    ctx.styleActif, ctx.categoryNames, ctx.categories, prefix, ctx.count,`,
     `${indent}    { ...ctx, senderJid: rawSender }`,
     `${indent}  );`,
-    `${indent}  for (let i = 0; i < chunks.length; i++) {`,
-    `${indent}    if (i === 0) {`,
-    `${indent}      // Première partie : image du style + newsletter + CTA, avec fallback interne.`,
-    `${indent}      await sendStyledMenuMessage(sock, extra.from, {`,
-    `${indent}        text: chunks[i], style: ctx.styleActif, imageUrl: ctx.imageUrl || null,`,
-    `${indent}        quoted: extra.from.endsWith('@g.us') ? msg : null,`,
-    `${indent}        mentions: [rawSender], withImage: true,`,
-    `${indent}      });`,
-    `${indent}    } else {`,
-    `${indent}      // Suites : texte standard pour ne jamais bloquer l'intégralité du allmenu.`,
-    `${indent}      await sock.sendMessage(extra.from, { text: chunks[i], mentions: [rawSender] });`,
-    `${indent}    }`,
-    `${indent}  }`,
+    `${indent}  const fullMenuText = chunks.join('\\n\\n');`,
+    `${indent}  await sendStyledMenuMessage(sock, extra.from, {`,
+    `${indent}    text: fullMenuText,`,
+    `${indent}    style: ctx.styleActif,`,
+    `${indent}    imageUrl: ctx.imageUrl || null,`,
+    `${indent}    quoted: extra.from.endsWith('@g.us') ? msg : null,`,
+    `${indent}    mentions: [rawSender],`,
+    `${indent}    withImage: true,`,
+    `${indent}  });`,
     `${indent}  return;`,
     `${indent}}`,
     '',
   ].join('\n');
 
-  console.log('[delivery-guard] allmenu hybride installé: première partie enrichie, suites standard');
   return source.slice(0, start) + replacement + source.slice(end);
 }
 
-const helper = `// ${MARKER}\nasync function withInteractiveTimeout(promise, ms, label) {\n  let timer;\n  try {\n    return await Promise.race([\n      Promise.resolve(promise),\n      new Promise((_, reject) => {\n        timer = setTimeout(() => reject(new Error(label + ' timeout après ' + ms + 'ms')), ms);\n        if (timer.unref) timer.unref();\n      }),\n    ]);\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\n`;
-
-// MENU / ALLMENU
 let menu = fs.readFileSync(menuPath, 'utf8');
-menu = patchMenuPrivateSafety(menu);
-if (!menu.includes(MARKER)) {
-  menu = replaceOnce(
-    menu,
-    'async function sendStyledMenuMessage(sock, jid, options = {}) {',
-    helper + 'async function sendStyledMenuMessage(sock, jid, options = {}) {',
-    'helper timeout menu'
-  );
-
-  const oldImage = `  let imageBuffer = null;\n  if (withImage) {\n    imageBuffer = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;\n    if (!imageBuffer) imageBuffer = await getImageBufferForStyle(style);\n  }`;
-  const newImage = `  let imageBuffer = null;\n  if (withImage) {\n    try {\n      imageBuffer = await withInteractiveTimeout((async () => {\n        const custom = imageUrl ? await getImageBufferFromUrl(imageUrl) : null;\n        return custom || await getImageBufferForStyle(style);\n      })(), 3500, 'menu image');\n    } catch (imageErr) {\n      console.warn('[Menu] image trop lente/indisponible → envoi sans image:', imageErr.message);\n      imageBuffer = null;\n    }\n  }`;
-  menu = replaceOnce(menu, oldImage, newImage, 'timeout image menu');
-
-  const oldPrepare = `      const prepared = await prepareWAMessageMedia(\n        { image: imageBuffer },\n        { upload: sock.waUploadToServer }\n      );`;
-  const newPrepare = `      const prepared = await withInteractiveTimeout(\n        prepareWAMessageMedia(\n          { image: imageBuffer },\n          { upload: sock.waUploadToServer }\n        ),\n        4500,\n        'menu media upload'\n      );`;
-  menu = replaceOnce(menu, oldPrepare, newPrepare, 'timeout upload menu');
-
-  menu = replaceOnce(
-    menu,
-    '    await sock.relayMessage(jid, generated.message, { messageId: generated.key.id });',
-    "    await withInteractiveTimeout(\n      sock.relayMessage(jid, generated.message, { messageId: generated.key.id }),\n      5000,\n      'menu interactive relay'\n    );",
-    'timeout relay menu'
-  );
-} else {
-  console.log('[delivery-guard] menu interactif déjà protégé');
-}
+menu = replaceRegion(
+  menu,
+  'async function sendStyledMenuMessage(',
+  '// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES',
+  directMenuSender(),
+  'sendStyledMenuMessage'
+);
 menu = replaceAllMenuBlock(menu);
 fs.writeFileSync(menuPath, menu);
-console.log('[delivery-guard] ✅ menu fiable + allmenu hybride');
 
-// REPERE / REPÈRE — bornage de l'interactif; le triple fallback est fourni par l'override.
 let repere = fs.readFileSync(reperePath, 'utf8');
-if (!repere.includes(MARKER)) {
-  repere = replaceOnce(repere, 'async function fetchImage() {', helper + 'async function fetchImage() {', 'helper timeout repere');
-
-  const oldPrepare = `    const prepared = await prepareWAMessageMedia(\n      { image: imageBuffer },\n      { upload: sock.waUploadToServer }\n    );`;
-  const newPrepare = `    const prepared = await withInteractiveTimeout(\n      prepareWAMessageMedia(\n        { image: imageBuffer },\n        { upload: sock.waUploadToServer }\n      ),\n      4500,\n      'repere media upload'\n    );`;
-  repere = replaceOnce(repere, oldPrepare, newPrepare, 'timeout upload repere');
-
-  repere = replaceOnce(
-    repere,
-    '  await sock.relayMessage(jid, generated.message, { messageId: generated.key.id });',
-    "  await withInteractiveTimeout(\n    sock.relayMessage(jid, generated.message, { messageId: generated.key.id }),\n    5000,\n    'repere interactive relay'\n  );",
-    'timeout relay repere'
-  );
-
-  repere = replaceOnce(
-    repere,
-    '    const imageBuffer = await fetchImage();',
-    `    let imageBuffer = null;\n    try {\n      imageBuffer = await withInteractiveTimeout(fetchImage(), 3500, 'repere image');\n    } catch (imageErr) {\n      console.warn('[repere] image trop lente/indisponible → envoi sans image:', imageErr.message);\n    }`,
-    'timeout image repere'
-  );
-
-  fs.writeFileSync(reperePath, repere);
-  console.log('[delivery-guard] ✅ repere/repère protégé contre les blocages interactifs');
-}
+repere = replaceRegion(
+  repere,
+  'async function sendInteractiveRepere(',
+  'async function sendStandardNewsletterFallback(',
+  directRepereSender(),
+  'sendInteractiveRepere'
+);
+fs.writeFileSync(reperePath, repere);
 
 for (const file of [menuPath, reperePath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
-  if (check.status !== 0) throw new Error(`[delivery-guard] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
+  if (check.status !== 0) {
+    throw new Error(`[delivery-guard] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
+  }
 }
 
 const finalMenu = fs.readFileSync(menuPath, 'utf8');
 const finalRepere = fs.readFileSync(reperePath, 'utf8');
-for (const marker of [MARKER, ALLMENU_MARKER, '[PRIVATE SAFE QUOTED]', "'menu interactive relay'", 'fallback newsletter indisponible']) {
+
+for (const marker of [DIRECT_MARKER, TIMEOUT_MARKER, ALLMENU_MARKER, 'additionalNodes: buildRelayNodes()', 'fullMenuText = chunks.join']) {
   if (!finalMenu.includes(marker)) throw new Error(`[delivery-guard] garde-fou menu absent: ${marker}`);
 }
-const allmenuStart = finalMenu.indexOf(`// ${ALLMENU_MARKER}`);
-const allmenuEnd = allmenuStart < 0 ? -1 : finalMenu.indexOf('const styleMatch = body.match(', allmenuStart);
-const allmenuBlock = allmenuStart >= 0 && allmenuEnd > allmenuStart ? finalMenu.slice(allmenuStart, allmenuEnd) : '';
-if (!allmenuBlock.includes('sendStyledMenuMessage(') || !allmenuBlock.includes('await sock.sendMessage(')) {
-  throw new Error('[delivery-guard] allmenu hybride incomplet');
+if (finalMenu.includes('viewOnceMessage: {')) {
+  const senderStart = finalMenu.indexOf('async function sendStyledMenuMessage(');
+  const senderEnd = finalMenu.indexOf('// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES', senderStart);
+  const sender = finalMenu.slice(senderStart, senderEnd);
+  if (sender.includes('viewOnceMessage: {')) throw new Error('[delivery-guard] menu utilise encore viewOnceMessage');
 }
-for (const marker of [MARKER, "3500, 'repere image'", "'repere media upload'", "'repere interactive relay'", 'fallbackText']) {
+for (const marker of [DIRECT_MARKER, TIMEOUT_MARKER, 'additionalNodes,', 'sendStandardNewsletterFallback', 'sendHardFallback']) {
   if (!finalRepere.includes(marker)) throw new Error(`[delivery-guard] garde-fou repere absent: ${marker}`);
 }
+const repStart = finalRepere.indexOf('async function sendInteractiveRepere(');
+const repEnd = finalRepere.indexOf('async function sendStandardNewsletterFallback(', repStart);
+if (finalRepere.slice(repStart, repEnd).includes('viewOnceMessage: {')) {
+  throw new Error('[delivery-guard] repere utilise encore viewOnceMessage');
+}
 
-console.log('[delivery-guard] ✅ menu/repere: interactif borné + fallback; allmenu: premier chunk enrichi + suites fiables');
+console.log('[delivery-guard] ✅ native-flow direct + biz nodes + ACK; allmenu réunifié en un seul contenu');
