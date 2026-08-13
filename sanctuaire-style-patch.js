@@ -1,0 +1,19 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const file = path.join(__dirname, 'bot', 'commands', 'general_tools', 'sanctuaire.js');
+if (!fs.existsSync(file)) throw new Error('[sanctuaire-style] sanctuaire.js absent');
+
+const src = `/**\n * Sanctuaire / Info groupe — THE BIG DIPPER\n */\nconst config = require('../../config.js');\n\nfunction fmtDate(ts) {\n  if (!ts) return '—';\n  try {\n    return new Date(Number(ts) * 1000).toLocaleDateString('fr-FR');\n  } catch (_) {\n    return '—';\n  }\n}\n\nfunction extractLinks(text) {\n  const found = String(text || '').match(/https?:\\/\\/[^\\s]+/gi) || [];\n  return [...new Set(found)];\n}\n\nmodule.exports = {\n  name: 'sanctuaire',\n  aliases: ['info', 'ginfo', 'groupinfo', 'i'],\n  category: '🛠️ Outils généraux',\n  description: 'Affiche les informations détaillées du groupe',\n  usage: \`\${config.prefix || '.'}sanctuaire\`,\n  groupOnly: true,\n  adminOnly: false,\n  botAdminNeeded: false,\n\n  async execute(sock, msg, args, extra) {\n    const { reply } = extra;\n    try {\n      const metadata = extra.groupMetadata || await sock.groupMetadata(extra.from);\n      const participants = Array.isArray(metadata?.participants) ? metadata.participants : [];\n      const admins = participants.filter(p => p?.admin === 'admin' || p?.admin === 'superadmin' || p?.isAdmin === true || p?.isSuperAdmin === true);\n      const creatorId = metadata?.owner || participants.find(p => p?.admin === 'superadmin')?.id || '';\n      const creatorTag = creatorId ? '@' + String(creatorId).split('@')[0] : '—';\n      const description = metadata?.desc || 'Aucune description';\n      const links = extractLinks(description);\n\n      let linksBlock = '╰➤ Aucun lien détecté';\n      if (links.length) {\n        linksBlock = links.map(link => '╰➤ ' + link).join('\\n');\n      }\n\n      let adminsBlock = '꒰ ꒰  ּ Aucun administrateur';\n      if (admins.length) {\n        adminsBlock = admins.map((admin, index) => {\n          const id = String(admin.id || '').split('@')[0];\n          return \`꒰ ꒰  ּ \${index + 1}. @\${id}\`;\n        }).join('\\n');\n      }\n\n      const text =\n\`ׄ       ׄ 🔮ᩧꫬ   𝗜𝗡𝗙𝗢𝗦   𝗗𝗨   𝗚𝗥𝗢𝗨𝗣𝗘   👑   ׅ   ꒱ ꒱\n\n☁️ׄ ︵ ׅ 🏷️ 𝗡𝗼𝗺\n╰➤ \${metadata?.subject || '—'}\n\n🆔 𝗜𝗗\n╰➤ \${metadata?.id || extra.from || '—'}\n\n👤 𝗣𝗿𝗼𝗽𝗿𝗶𝗲́𝘁𝗮𝗶𝗿𝗲\n╰➤ \${creatorTag}\n\n👥 𝗠𝗲𝗺𝗯𝗿𝗲𝘀\n╰➤ \${participants.length}\n\n👑 𝗔𝗱𝗺𝗶𝗻𝘀\n╰➤ \${admins.length}\n\n📝 𝗗𝗲𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻\n╰➤ \${description}\n\nׄ       ׄ ⚙️ᩧꫬ   𝗣𝗔𝗥𝗔𝗠𝗘̀𝗧𝗥𝗘𝗦   ׅ   ꒱ ꒱\n\n🔒 𝗥𝗲𝘀𝘁𝗿𝗲𝗶𝗻𝘁\n╰➤ \${metadata?.restrict ? 'OUI' : 'NON'}\n\n📢 𝗔𝗻𝗻𝗼𝗻𝗰𝗲𝘀 𝘀𝗲𝘂𝗹𝗲𝘀\n╰➤ \${metadata?.announce ? 'OUI' : 'NON'}\n\n📅 𝗖𝗿𝗲́𝗮𝘁𝗶𝗼𝗻\n╰➤ \${fmtDate(metadata?.creation)}\n\n🔗 𝗟𝗶𝗲𝗻𝘀\n\${linksBlock}\n\nׄ       ׄ 👑ᩧꫬ   𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡   ׅ   ꒱ ꒱\n\n\${adminsBlock}\n\n☁️ׄ ︵ ׅ ⚜️ 𝗙𝗼𝗻𝗱𝗮𝘁𝗲𝘂𝗿\n╰➤ \${creatorTag}\n\nׄ       ׄ ✦ᩧꫬ   𝗧𝗛𝗘   𝗕𝗜𝗚   𝗗𝗜𝗣𝗣𝗘𝗥   ✦   ׅ   ꒱ ꒱\`;\n\n      const mentions = admins.map(a => a.id).filter(Boolean);\n      if (creatorId && !mentions.includes(creatorId)) mentions.push(creatorId);\n\n      await sock.sendMessage(extra.from, { text, mentions }, { quoted: msg });\n    } catch (error) {\n      console.error('[sanctuaire] error:', error);\n      await reply('❌ Impossible de lire les informations du groupe : ' + error.message);\n    }\n  }\n};\n`;
+
+fs.writeFileSync(file, src, 'utf8');
+const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+if (check.status !== 0) throw new Error('[sanctuaire-style] syntaxe invalide: ' + (check.stderr || check.stdout));
+
+const final = fs.readFileSync(file, 'utf8');
+for (const marker of ["aliases: ['info', 'ginfo', 'groupinfo', 'i']", '𝗜𝗡𝗙𝗢𝗦   𝗗𝗨   𝗚𝗥𝗢𝗨𝗣𝗘', 'botAdminNeeded: false']) {
+  if (!final.includes(marker)) throw new Error('[sanctuaire-style] validation absente: ' + marker);
+}
+console.log('[sanctuaire-style] ✅ .i/.info restylés et validés');
