@@ -13,7 +13,15 @@ if (src.includes(oldLine)) {
   throw new Error('[prep-guard-fix] garde attendu introuvable');
 }
 
-// Le postinstall exécute déjà ce script en premier. On chaîne ici le correctif
-// de compatibilité du finalizer menu afin qu'il soit appliqué avant les checks
-// et avant session-isolation-finalize.js, sans modifier la longue commande npm.
 require('./fix-session-finalize-menu-anchor');
+
+// Le renderer remplace le sender du menu plus tard dans le pipeline.
+// On chaîne le correctif d'image de session à la fin de ce renderer.
+const renderer = path.join(__dirname, 'interactive-render-fix.js');
+let rendererSrc = fs.readFileSync(renderer, 'utf8');
+const hook = "require('./direct-menu-session-image-fix');";
+if (!rendererSrc.includes(hook)) {
+  rendererSrc += `\n\n${hook}\n`;
+  fs.writeFileSync(renderer, rendererSrc, 'utf8');
+  console.log('[prep-guard-fix] hook image session ajouté au renderer');
+}
