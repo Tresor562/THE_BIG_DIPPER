@@ -10,11 +10,17 @@ const menuPath = path.join(BOT, 'commands', 'general_tools', 'menu.js');
 const reperePath = path.join(BOT, 'commands', 'bot_sovereignty', 'repere.js');
 const verifierPath = path.join(BOT, 'scripts', 'verify-command-runtime.js');
 
+const NEXUS_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07';
 const OTAKU_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
+const SUPPORT_GROUP_URL = 'https://chat.whatsapp.com/Dm7yX11U7vmCCFM240sNKq?s=cl&p=a&ilr=1';
 const DEFAULT_MENU_IMAGE_URL = 'https://files.catbox.moe/1k8r1f.jpg';
+
 const NEXUS_NEWSLETTER_MARKER = '[NEXUS NEWSLETTER ACTION]';
+const NEXUS_CTA_MARKER = '[NEXUS CTA ACTION]';
 const OTAKU_CTA_MARKER = '[OTAKU CTA ACTION]';
+const SUPPORT_CTA_MARKER = '[SUPPORT CTA ACTION]';
 const RELIABLE_IMAGE_MARKER = '[RELIABLE MENU IMAGE]';
+const THREE_CTA_MARKER = '[THREE DESTINATION CTA]';
 
 for (const file of [menuPath, reperePath, verifierPath]) {
   if (!fs.existsSync(file)) throw new Error(`[interactive-render-fix] fichier absent: ${file}`);
@@ -35,8 +41,11 @@ function directMenuSender() {
   // [INTERACTIVE DELIVERY TIMEOUT]
   // [SINGLE COMMAND DELIVERY]
   // [DUAL CHANNEL CTA]
+  // ${THREE_CTA_MARKER}
   // ${NEXUS_NEWSLETTER_MARKER}
+  // ${NEXUS_CTA_MARKER}
   // ${OTAKU_CTA_MARKER}
+  // ${SUPPORT_CTA_MARKER}
   // ${RELIABLE_IMAGE_MARKER}
   const {
     text = '',
@@ -49,7 +58,9 @@ function directMenuSender() {
   } = options;
 
   const newsletterJid = config.newsletterJid || '120363411005383995@newsletter';
+  const nexusChannelUrl = '${NEXUS_CHANNEL_URL}';
   const otakuChannelUrl = '${OTAKU_CHANNEL_URL}';
+  const supportGroupUrl = '${SUPPORT_GROUP_URL}';
   const defaultMenuImageUrl = '${DEFAULT_MENU_IMAGE_URL}';
   const safeQuotedMessage = quoted && jid.endsWith('@g.us') ? quoted : undefined;
   const safeQuotedOptions = safeQuotedMessage ? { quoted: safeQuotedMessage } : undefined;
@@ -84,9 +95,25 @@ function directMenuSender() {
     {
       name: 'cta_url',
       buttonParamsJson: JSON.stringify({
+        display_text: '📢 Voir Nexus Tech',
+        url: nexusChannelUrl,
+        merchant_url: nexusChannelUrl,
+      }),
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
         display_text: '🖤 Voir Otaku Nexus',
         url: otakuChannelUrl,
         merchant_url: otakuChannelUrl,
+      }),
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '🛠️ Groupe Support',
+        url: supportGroupUrl,
+        merchant_url: supportGroupUrl,
       }),
     },
   ]);
@@ -116,7 +143,7 @@ function directMenuSender() {
   };
 
   const sendSingleFallback = async imageBuffer => {
-    // Un seul message de repli. Aucune URL brute n'est ajoutée au contenu.
+    // Une seule réponse de secours; aucun lien brut n'est ajouté au texte.
     if (imageBuffer && text.length <= 1000) {
       return withTimeout(
         sock.sendMessage(jid, { image: imageBuffer, caption: text, contextInfo }, safeQuotedOptions),
@@ -224,9 +251,14 @@ function directRepereSender() {
   // [INTERACTIVE DELIVERY TIMEOUT]
   // [SINGLE COMMAND DELIVERY]
   // [DUAL CHANNEL CTA]
+  // ${THREE_CTA_MARKER}
   // ${NEXUS_NEWSLETTER_MARKER}
+  // ${NEXUS_CTA_MARKER}
   // ${OTAKU_CTA_MARKER}
+  // ${SUPPORT_CTA_MARKER}
+  const nexusChannelUrl = '${NEXUS_CHANNEL_URL}';
   const otakuChannelUrl = '${OTAKU_CHANNEL_URL}';
+  const supportGroupUrl = '${SUPPORT_GROUP_URL}';
 
   const withTimeout = async (promise, ms, label) => {
     let timer;
@@ -258,14 +290,32 @@ function directRepereSender() {
     });
   }
 
-  const buttons = [{
-    name: 'cta_url',
-    buttonParamsJson: JSON.stringify({
-      display_text: '🖤 Voir Otaku Nexus',
-      url: otakuChannelUrl,
-      merchant_url: otakuChannelUrl,
-    }),
-  }];
+  const buttons = [
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '📢 Voir Nexus Tech',
+        url: nexusChannelUrl,
+        merchant_url: nexusChannelUrl,
+      }),
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '🖤 Voir Otaku Nexus',
+        url: otakuChannelUrl,
+        merchant_url: otakuChannelUrl,
+      }),
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '🛠️ Groupe Support',
+        url: supportGroupUrl,
+        merchant_url: supportGroupUrl,
+      }),
+    },
+  ];
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: caption }),
@@ -340,26 +390,33 @@ repere = replaceRegion(
 );
 fs.writeFileSync(reperePath, repere);
 
-// Le vérificateur privé doit contrôler l'artefact réellement déployé :
-// Nexus Tech = action newsletter native ; Otaku Nexus = CTA URL natif.
+// Aligne le vérificateur privé sur l'artefact réellement déployé.
 let verifier = fs.readFileSync(verifierPath, 'utf8');
 verifier = verifier
-  .replace(
-    "  'additionalNodes: buildRelayNodes()', \"newsletterMetadata('jid', newsletterJid)\",\n  \"display_text: '📢 Voir Nexus Tech'\", \"display_text: '🖤 Voir Otaku Nexus'\",",
-    "  'additionalNodes: buildRelayNodes()', '[NEXUS NEWSLETTER ACTION]', '[OTAKU CTA ACTION]',\n  '[RELIABLE MENU IMAGE]', \"display_text: '🖤 Voir Otaku Nexus'\"," 
-  )
-  .replace(
-    "if ((menuSender.match(/display_text:\\s*['\"]📢 Voir Nexus Tech['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Nexus Tech menu doit exister exactement une fois');\n}\n",
-    "if (menuSender.includes(\"newsletterMetadata('jid'\")) {\n  throw new Error('[verify-runtime] menu dépend encore de newsletterMetadata avant affichage');\n}\n"
-  )
-  .replace(
-    "  \"newsletterMetadata('jid', effectiveNewsletterJid)\", \"display_text: '📢 Voir Nexus Tech'\",\n  \"display_text: '🖤 Voir Otaku Nexus'\", 'sendStandardNewsletterFallback', 'sendHardFallback',",
-    "  '[NEXUS NEWSLETTER ACTION]', '[OTAKU CTA ACTION]', \"display_text: '🖤 Voir Otaku Nexus'\",\n  'sendStandardNewsletterFallback', 'sendHardFallback',"
-  )
-  .replace(
-    "if ((repereSender.match(/display_text:\\s*['\"]📢 Voir Nexus Tech['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Nexus Tech repere doit exister exactement une fois');\n}\n",
-    "if (repereSender.includes(\"newsletterMetadata('jid'\")) {\n  throw new Error('[verify-runtime] repere dépend encore de newsletterMetadata avant affichage');\n}\n"
+  .replace(/\s*"newsletterMetadata\('jid', newsletterJid\)",/g, '')
+  .replace(/\s*"newsletterMetadata\('jid', effectiveNewsletterJid\)",/g, '');
+
+const menuOtakuGuard = `if ((menuSender.match(/display_text:\\s*['\"]🖤 Voir Otaku Nexus['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Otaku Nexus menu doit exister exactement une fois');\n}`;
+if (!verifier.includes("display_text: '🛠️ Groupe Support'")) {
+  verifier = verifier.replace(
+    menuOtakuGuard,
+    menuOtakuGuard + `\nif ((menuSender.match(/display_text:\\s*['\"]🛠️ Groupe Support['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Groupe Support menu doit exister exactement une fois');\n}\nif (menuSender.includes("newsletterMetadata('jid'")) {\n  throw new Error('[verify-runtime] menu dépend encore de newsletterMetadata avant affichage');\n}`
   );
+}
+
+const repereOtakuGuard = `if ((repereSender.match(/display_text:\\s*['\"]🖤 Voir Otaku Nexus['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Otaku Nexus repere doit exister exactement une fois');\n}`;
+if (!verifier.includes('bouton Groupe Support repere doit exister exactement une fois')) {
+  verifier = verifier.replace(
+    repereOtakuGuard,
+    repereOtakuGuard + `\nif ((repereSender.match(/display_text:\\s*['\"]🛠️ Groupe Support['\"]/g) || []).length !== 1) {\n  throw new Error('[verify-runtime] bouton Groupe Support repere doit exister exactement une fois');\n}\nif (repereSender.includes("newsletterMetadata('jid'")) {\n  throw new Error('[verify-runtime] repere dépend encore de newsletterMetadata avant affichage');\n}`
+  );
+}
+
+// Les trois libellés doivent aussi être exigés dans les marqueurs globaux.
+verifier = verifier.replace(
+  "\"display_text: '📢 Voir Nexus Tech'\", \"display_text: '🖤 Voir Otaku Nexus'\",",
+  "\"display_text: '📢 Voir Nexus Tech'\", \"display_text: '🖤 Voir Otaku Nexus'\", \"display_text: '🛠️ Groupe Support'\"," 
+);
 fs.writeFileSync(verifierPath, verifier);
 
 for (const file of [menuPath, reperePath, verifierPath]) {
@@ -373,24 +430,38 @@ const finalMenu = fs.readFileSync(menuPath, 'utf8');
 const finalRepere = fs.readFileSync(reperePath, 'utf8');
 const finalVerifier = fs.readFileSync(verifierPath, 'utf8');
 
-for (const marker of [NEXUS_NEWSLETTER_MARKER, OTAKU_CTA_MARKER, RELIABLE_IMAGE_MARKER, "display_text: '🖤 Voir Otaku Nexus'", DEFAULT_MENU_IMAGE_URL]) {
+const requiredButtons = [
+  "display_text: '📢 Voir Nexus Tech'",
+  "display_text: '🖤 Voir Otaku Nexus'",
+  "display_text: '🛠️ Groupe Support'",
+];
+for (const marker of [NEXUS_NEWSLETTER_MARKER, NEXUS_CTA_MARKER, OTAKU_CTA_MARKER, SUPPORT_CTA_MARKER, THREE_CTA_MARKER, RELIABLE_IMAGE_MARKER, DEFAULT_MENU_IMAGE_URL, ...requiredButtons]) {
   if (!finalMenu.includes(marker)) throw new Error(`[interactive-render-fix] menu incomplet: ${marker}`);
 }
-if (finalMenu.includes("newsletterMetadata('jid'")) {
-  const senderStart = finalMenu.indexOf('async function sendStyledMenuMessage(');
-  const senderEnd = finalMenu.indexOf('// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES', senderStart);
-  if (finalMenu.slice(senderStart, senderEnd).includes("newsletterMetadata('jid'")) {
-    throw new Error('[interactive-render-fix] menu dépend encore de newsletterMetadata');
-  }
-}
-for (const marker of [NEXUS_NEWSLETTER_MARKER, OTAKU_CTA_MARKER, "display_text: '🖤 Voir Otaku Nexus'"]) {
+for (const marker of [NEXUS_NEWSLETTER_MARKER, NEXUS_CTA_MARKER, OTAKU_CTA_MARKER, SUPPORT_CTA_MARKER, THREE_CTA_MARKER, ...requiredButtons]) {
   if (!finalRepere.includes(marker)) throw new Error(`[interactive-render-fix] repere incomplet: ${marker}`);
 }
-if (finalRepere.slice(finalRepere.indexOf('async function sendInteractiveRepere('), finalRepere.indexOf('async function sendStandardNewsletterFallback(')).includes("newsletterMetadata('jid'")) {
-  throw new Error('[interactive-render-fix] repere dépend encore de newsletterMetadata');
-}
-if (!finalVerifier.includes('[RELIABLE MENU IMAGE]') || !finalVerifier.includes('[OTAKU CTA ACTION]')) {
-  throw new Error('[interactive-render-fix] vérificateur runtime non aligné');
+
+const menuStart = finalMenu.indexOf('async function sendStyledMenuMessage(');
+const menuEnd = finalMenu.indexOf('// ══════════════════════════════════════════════════════════════\n// 📋 NAVIGATION PAR CATÉGORIES', menuStart);
+const menuSender = finalMenu.slice(menuStart, menuEnd);
+const repStart = finalRepere.indexOf('async function sendInteractiveRepere(');
+const repEnd = finalRepere.indexOf('async function sendStandardNewsletterFallback(', repStart);
+const repereSender = finalRepere.slice(repStart, repEnd);
+
+for (const [label, source] of [['menu', menuSender], ['repere', repereSender]]) {
+  if (source.includes("newsletterMetadata('jid'")) {
+    throw new Error(`[interactive-render-fix] ${label} dépend encore de newsletterMetadata`);
+  }
+  for (const button of requiredButtons) {
+    if ((source.match(new RegExp(button.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length !== 1) {
+      throw new Error(`[interactive-render-fix] ${label}: ${button} doit exister exactement une fois`);
+    }
+  }
 }
 
-console.log('[interactive-render-fix] ✅ newsletter Nexus + CTA Otaku + image Menu/Allmenu robuste');
+if (!finalVerifier.includes("display_text: '🛠️ Groupe Support'") || !finalVerifier.includes('bouton Groupe Support menu doit exister exactement une fois')) {
+  throw new Error('[interactive-render-fix] vérificateur runtime non aligné sur les trois CTA');
+}
+
+console.log('[interactive-render-fix] ✅ effet newsletter Nexus Tech + 3 CTA URL + image Menu/Allmenu robuste');
