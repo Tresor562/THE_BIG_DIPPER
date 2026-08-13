@@ -89,4 +89,13 @@ if (!original.includes(runner)) {
   pkg.scripts['validate:commands'] = runner + ' && ' + original;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 }
+
+// Appliquer en dernier la commande gstatus réelle du wrapper Render.
+const override = path.join(__dirname, 'overrides', 'groupstatus.js');
+const target = path.join(BOT, 'commands', 'group_management', 'groupstatus.js');
+if (!fs.existsSync(override)) throw new Error('[group-status-test-patch] override gstatus absent');
+fs.copyFileSync(override, target);
+const gstatusCheck = spawnSync(process.execPath, ['--check', target], { encoding: 'utf8' });
+if (gstatusCheck.status !== 0) throw new Error('[group-status-test-patch] syntaxe gstatus override: ' + (gstatusCheck.stderr || gstatusCheck.stdout));
+console.log('[group-status-test-patch] ✅ override gstatus final appliqué');
 console.log('[group-status-test-patch] ✅ test group-status branché sur validate:commands');
