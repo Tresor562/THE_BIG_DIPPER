@@ -26,7 +26,7 @@ function replaceRegion(source, startNeedle, endNeedle, replacement, label) {
 }
 
 function directMenuSender() {
-  return `async function sendStyledMenuMessage(sock, jid, options = {}) {
+  return String.raw`async function sendStyledMenuMessage(sock, jid, options = {}) {
   // ${DIRECT_MARKER}
   // ${TIMEOUT_MARKER}
   const {
@@ -223,7 +223,7 @@ function directMenuSender() {
 }
 
 function directRepereSender() {
-  return `async function sendInteractiveRepere(sock, jid, caption, imageBuffer, quoted) {
+  return String.raw`async function sendInteractiveRepere(sock, jid, caption, imageBuffer, quoted) {
   // ${DIRECT_MARKER}
   // ${TIMEOUT_MARKER}
   const { channelUrl } = getChannelConfig();
