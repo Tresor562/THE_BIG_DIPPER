@@ -40,7 +40,6 @@ for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]
   }
 }
 
-// Réparer aussi groupstatus et les défauts legacy des variantes GC après prepare.js.
 require('./group-status-command-fix');
 
 const gc2 = fs.readFileSync(gc2Path, 'utf8');
@@ -91,9 +90,6 @@ for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]
 
 console.log('[gc-compat] ✅ compatibilité legacy validée avant unification');
 
-// Dernière étape : remplacer les cinq implémentations divergentes par un seul
-// moteur robuste. Ce require s'exécute après tous les contrôles historiques
-// afin que les audits legacy restent utiles, puis les audits globaux du build
-// vérifient l'artefact unifié réellement déployé.
 require('./group-status-unified-patch');
+require('./group-status-baileys-6722-fix');
 require('./group-status-engine-test-patch');
