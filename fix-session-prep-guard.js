@@ -15,8 +15,6 @@ if (src.includes(oldLine)) {
 
 require('./fix-session-finalize-menu-anchor');
 
-// Le renderer remplace le sender du menu plus tard dans le pipeline.
-// On chaîne le correctif d'image de session à la fin de ce renderer.
 const renderer = path.join(__dirname, 'interactive-render-fix.js');
 let rendererSrc = fs.readFileSync(renderer, 'utf8');
 const hook = "require('./direct-menu-session-image-fix');";
@@ -24,4 +22,18 @@ if (!rendererSrc.includes(hook)) {
   rendererSrc += `\n\n${hook}\n`;
   fs.writeFileSync(renderer, rendererSrc, 'utf8');
   console.log('[prep-guard-fix] hook image session ajouté au renderer');
+}
+
+// Le sous-module conserve un verifier historique qui exige encore config.selfMode.
+// Le runtime final utilise runtimeSelfMode, isolé par session : aligner le verifier
+// avant les validations de build ET avant le prestart exécuté sur Render.
+const installer = path.join(__dirname, 'bot', 'scripts', 'install-command-runtime-fixes.js');
+if (fs.existsSync(installer)) {
+  let installerSrc = fs.readFileSync(installer, 'utf8');
+  const verifyHook = "require('../../verify-runtime-session-guard-fix');";
+  if (!installerSrc.includes(verifyHook)) {
+    installerSrc += `\n\n${verifyHook}\n`;
+    fs.writeFileSync(installer, installerSrc, 'utf8');
+    console.log('[prep-guard-fix] hook verifier runtime ajouté à installer');
+  }
 }
