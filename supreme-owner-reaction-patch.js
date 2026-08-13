@@ -26,3 +26,5 @@ if (finalSrc.includes(oldLine)) throw new Error('[supreme-react] ancienne altern
 const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error('[supreme-react] syntaxe handler: ' + (check.stderr || check.stdout));
 console.log('[supreme-react] ✅ alternance stricte 👨🏾‍💻 puis 🤴🏾 validée');
+
+require('./sanctuaire-style-patch');
