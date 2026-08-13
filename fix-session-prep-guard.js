@@ -12,3 +12,8 @@ if (src.includes(oldLine)) {
 } else if (!src.includes(newLine)) {
   throw new Error('[prep-guard-fix] garde attendu introuvable');
 }
+
+// Le postinstall exécute déjà ce script en premier. On chaîne ici le correctif
+// de compatibilité du finalizer menu afin qu'il soit appliqué avant les checks
+// et avant session-isolation-finalize.js, sans modifier la longue commande npm.
+require('./fix-session-finalize-menu-anchor');
