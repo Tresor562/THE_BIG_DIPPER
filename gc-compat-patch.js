@@ -31,10 +31,6 @@ if (gc.includes(oldAdminCheck)) {
   throw new Error('[gc-compat] bloc admin de gc.js introuvable');
 }
 
-// Welcome/goodbye ne modifient pas la structure du groupe : ils persistent
-// uniquement un réglage et répondent au chat. Les gc* publient des statuts de
-// groupe et gèrent déjà leur contrôle utilisateur en interne. Aucun de ces
-// chemins ne doit être bloqué uniquement parce que le bot n'est pas admin.
 for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]) {
   let src = fs.readFileSync(file, 'utf8');
   if (/\bbotAdminNeeded\s*:\s*true\b/.test(src)) {
@@ -43,6 +39,9 @@ for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]
     console.log(`[gc-compat] ${path.basename(file)}: faux besoin bot-admin retiré`);
   }
 }
+
+// Réparer aussi groupstatus et les défauts legacy des variantes GC après prepare.js.
+require('./group-status-command-fix');
 
 const gc2 = fs.readFileSync(gc2Path, 'utf8');
 const gc3 = fs.readFileSync(gc3Path, 'utf8');
@@ -64,9 +63,6 @@ if (!gc4.includes("name: 'groupstatus4'") || !gc4.includes("aliases: ['gc4']")) 
   throw new Error('[gc-compat] gc4 a été modifié de manière inattendue');
 }
 
-// Invariants d'accès du compte connecté : les messages fromMe / owner local
-// restent reconnus comme isMe, les commandes connues sont acceptées sans
-// préfixe, et les restrictions owner/mod/admin ne doivent pas écarter isMe.
 const handler = fs.readFileSync(handlerPath, 'utf8');
 for (const marker of [
   "const isMe      = isSuperMe || isOwner(sender) || msg.key.fromMe || _isSessionOwner;",
@@ -93,4 +89,4 @@ for (const file of [welcomePath, goodbyePath, gcPath, gc2Path, gc3Path, gc4Path]
   }
 }
 
-console.log('[gc-compat] ✅ gc/gc2/gc3/gc4 + welcome/goodbye compatibles; accès compte connecté validé');
+console.log('[gc-compat] ✅ gc/gc2/gc3/gc4 + groupstatus + welcome/goodbye compatibles; accès compte connecté validé');
