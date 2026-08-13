@@ -47,15 +47,9 @@ test('group status text builds a groupStatusMessageV2 and relays it', async () =
 
 test('quoted media detection survives common WhatsApp wrappers', () => {
   const quoted = { imageMessage: { caption: 'x', url: 'https://example.invalid/x' } };
-  const direct = {
-    extendedTextMessage: { contextInfo: { quotedMessage: quoted } },
-  };
-  const ephemeral = {
-    ephemeralMessage: { message: direct },
-  };
-  const viewOnce = {
-    viewOnceMessageV2: { message: direct },
-  };
+  const direct = { extendedTextMessage: { contextInfo: { quotedMessage: quoted } } };
+  const ephemeral = { ephemeralMessage: { message: direct } };
+  const viewOnce = { viewOnceMessageV2: { message: direct } };
   assert.deepEqual(engine.findQuoted(direct), quoted);
   assert.deepEqual(engine.findQuoted(ephemeral), quoted);
   assert.deepEqual(engine.findQuoted(viewOnce), quoted);
@@ -85,4 +79,18 @@ test('all group-status routes load with stable permissions and unique tokens', (
 fs.writeFileSync(file, test, 'utf8');
 const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error('[group-status-test-patch] syntaxe test: ' + (check.stderr || check.stdout));
-console.log('[group-status-test-patch] ✅ test exécutable group-status installé');
+
+// Le wrapper appelle déjà `npm run validate:commands` après l'installation
+// des dépendances. On accroche le test à ce point afin qu'il s'exécute contre
+// la vraie version Baileys installée, sans ajouter un nouveau maillon fragile
+// à la longue commande postinstall du wrapper.
+const pkgPath = path.join(BOT, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const original = String(pkg.scripts?.['validate:commands'] || 'node scripts/validate-commands.js');
+const runner = 'node --test tests/group-status-engine.test.js';
+if (!original.includes(runner)) {
+  pkg.scripts = pkg.scripts || {};
+  pkg.scripts['validate:commands'] = runner + ' && ' + original;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+}
+console.log('[group-status-test-patch] ✅ test group-status branché sur validate:commands');
