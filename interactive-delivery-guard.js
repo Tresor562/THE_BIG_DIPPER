@@ -11,6 +11,9 @@ const reperePath = path.join(BOT, 'commands', 'bot_sovereignty', 'repere.js');
 const DIRECT_MARKER = '[DIRECT NATIVE FLOW DELIVERY]';
 const TIMEOUT_MARKER = '[INTERACTIVE DELIVERY TIMEOUT]';
 const ALLMENU_MARKER = '[ALLMENU SINGLE RICH DELIVERY]';
+const DUAL_CTA_MARKER = '[DUAL CHANNEL CTA]';
+const SINGLE_DELIVERY_MARKER = '[SINGLE COMMAND DELIVERY]';
+const OTAKU_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
 
 for (const file of [menuPath, reperePath]) {
   if (!fs.existsSync(file)) throw new Error(`[delivery-guard] fichier absent: ${file}`);
@@ -29,6 +32,8 @@ function directMenuSender() {
   return String.raw`async function sendStyledMenuMessage(sock, jid, options = {}) {
   // ${DIRECT_MARKER}
   // ${TIMEOUT_MARKER}
+  // ${DUAL_CTA_MARKER}
+  // ${SINGLE_DELIVERY_MARKER}
   const {
     text = '',
     style = 0,
@@ -39,7 +44,8 @@ function directMenuSender() {
     imageBuffer: providedImageBuffer = null,
   } = options;
 
-  const channelUrl = config.social?.whatsappChannel || 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
+  const newsletterJid = config.newsletterJid || '120363411005383995@newsletter';
+  const otakuChannelUrl = '${OTAKU_CHANNEL_URL}';
   const safeQuotedMessage = quoted && jid.endsWith('@g.us') ? quoted : undefined;
   const safeQuotedOptions = safeQuotedMessage ? { quoted: safeQuotedMessage } : undefined;
 
@@ -58,33 +64,45 @@ function directMenuSender() {
     }
   };
 
-  const waitForAck = (messageId, ms = 3200) => {
-    if (!messageId || !sock?.ev || typeof sock.ev.on !== 'function') return Promise.resolve(true);
-    return new Promise(resolve => {
-      let settled = false;
-      let timer = null;
-      const detach = () => {
-        if (typeof sock.ev.off === 'function') sock.ev.off('messages.update', onUpdate);
-        else if (typeof sock.ev.removeListener === 'function') sock.ev.removeListener('messages.update', onUpdate);
-      };
-      const finish = value => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        detach();
-        resolve(value);
-      };
-      const onUpdate = updates => {
-        for (const item of (updates || [])) {
-          if (item?.key?.id !== messageId) continue;
-          const status = Number(item?.update?.status);
-          if (!Number.isFinite(status) || status >= 2) return finish(true);
-        }
-      };
-      sock.ev.on('messages.update', onUpdate);
-      timer = setTimeout(() => finish(false), ms);
-      if (timer.unref) timer.unref();
-    });
+  const resolveNexusChannelUrl = async () => {
+    if (sock?._dipperNexusChannelUrl) return sock._dipperNexusChannelUrl;
+    if (typeof sock?.newsletterMetadata !== 'function') {
+      throw new Error('newsletterMetadata indisponible pour Nexus Tech');
+    }
+    const metadata = await withTimeout(
+      sock.newsletterMetadata('jid', newsletterJid),
+      5000,
+      'Nexus Tech newsletter metadata'
+    );
+    const invite = String(metadata?.invite || '')
+      .replace(/^https:\/\/whatsapp\.com\/channel\//i, '')
+      .trim();
+    if (!invite) throw new Error('invite public Nexus Tech absent');
+    const url = 'https://whatsapp.com/channel/' + invite;
+    sock._dipperNexusChannelUrl = url;
+    return url;
+  };
+
+  const buildChannelButtons = async () => {
+    const nexusChannelUrl = await resolveNexusChannelUrl();
+    return [
+      {
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({
+          display_text: '📢 Voir Nexus Tech',
+          url: nexusChannelUrl,
+          merchant_url: nexusChannelUrl,
+        }),
+      },
+      {
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({
+          display_text: '🖤 Voir Otaku Nexus',
+          url: otakuChannelUrl,
+          merchant_url: otakuChannelUrl,
+        }),
+      },
+    ];
   };
 
   const contextInfo = {
@@ -92,10 +110,27 @@ function directMenuSender() {
     forwardingScore: 1,
     isForwarded: true,
     forwardedNewsletterMessageInfo: {
-      newsletterJid: config.newsletterJid || '120363411005383995@newsletter',
+      newsletterJid,
       newsletterName: config.botName || '𝐓𝐇𝐄 𝐁𝐈𝐆 𝐃𝐈𝐏𝐏𝐄𝐑',
       serverMessageId: -1,
     },
+  };
+
+  const sendSingleFallback = async imageBuffer => {
+    // Un seul fallback, uniquement si l'interactif échoue AVANT d'être relayé
+    // ou si relayMessage rejette réellement. Aucun lien brut n'est ajouté.
+    if (imageBuffer && text.length <= 1000) {
+      return withTimeout(
+        sock.sendMessage(jid, { image: imageBuffer, caption: text, contextInfo }, safeQuotedOptions),
+        7000,
+        'menu fallback unique image'
+      );
+    }
+    return withTimeout(
+      sock.sendMessage(jid, { text, contextInfo }, safeQuotedOptions),
+      7000,
+      'menu fallback unique texte'
+    );
   };
 
   let imageBuffer = providedImageBuffer || null;
@@ -133,6 +168,7 @@ function directMenuSender() {
       : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
   };
 
+  let generated;
   try {
     let header = proto.Message.InteractiveMessage.Header.create({
       title: '', subtitle: '', hasMediaAttachment: false,
@@ -150,72 +186,42 @@ function directMenuSender() {
       });
     }
 
+    const buttons = await buildChannelButtons();
     const interactiveMessage = proto.Message.InteractiveMessage.create({
       body: proto.Message.InteractiveMessage.Body.create({ text }),
       footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
       header,
       nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-        buttons: [{
-          name: 'cta_url',
-          buttonParamsJson: JSON.stringify({
-            display_text: '📢 Rejoindre la chaîne',
-            url: channelUrl,
-            merchant_url: channelUrl,
-          }),
-        }],
+        buttons,
         messageParamsJson: '{}',
         messageVersion: 1,
       }),
       contextInfo,
     });
 
-    // IMPORTANT : pas de viewOnceMessage. Le native-flow est relayé directement
-    // avec les nœuds biz attendus par WhatsApp Web MD.
-    const generated = generateWAMessageFromContent(
+    generated = generateWAMessageFromContent(
       jid,
       { interactiveMessage },
       { quoted: safeQuotedMessage, userJid: sock.user?.id }
     );
+  } catch (prepareErr) {
+    console.warn('[Menu] préparation interactive impossible → fallback unique:', prepareErr.message);
+    return sendSingleFallback(imageBuffer);
+  }
 
-    const ackPromise = waitForAck(generated.key.id);
+  try {
     await withTimeout(
       sock.relayMessage(jid, generated.message, {
         messageId: generated.key.id,
         additionalNodes: buildRelayNodes(),
       }),
-      5000,
+      10000,
       'menu native-flow relay'
     );
-    const acked = await ackPromise;
-    if (!acked) throw new Error('menu native-flow sans ACK WhatsApp');
     return generated;
-  } catch (interactiveErr) {
-    console.warn('[Menu] native-flow non confirmé → fallback standard:', interactiveErr.message);
-    const fallbackText = text + '\n\n📢 *Chaîne officielle :* ' + channelUrl;
-
-    // Fallback 1 : message standard avec effet newsletter. Pour les longs
-    // contenus (allmenu), on garde UNE seule bulle texte au lieu de séparer.
-    try {
-      if (imageBuffer && fallbackText.length <= 1000) {
-        return await withTimeout(
-          sock.sendMessage(jid, { image: imageBuffer, caption: fallbackText, contextInfo }, safeQuotedOptions),
-          5000,
-          'menu fallback newsletter image'
-        );
-      }
-      return await withTimeout(
-        sock.sendMessage(jid, { text: fallbackText, contextInfo }, safeQuotedOptions),
-        5000,
-        'menu fallback newsletter texte'
-      );
-    } catch (newsletterErr) {
-      console.warn('[Menu] fallback newsletter indisponible → fallback brut:', newsletterErr.message);
-      return withTimeout(
-        sock.sendMessage(jid, { text: fallbackText }, safeQuotedOptions),
-        5000,
-        'menu fallback brut'
-      );
-    }
+  } catch (relayErr) {
+    console.warn('[Menu] relay interactif rejeté → fallback unique:', relayErr.message);
+    return sendSingleFallback(imageBuffer);
   }
 }
 
@@ -226,7 +232,11 @@ function directRepereSender() {
   return String.raw`async function sendInteractiveRepere(sock, jid, caption, imageBuffer, quoted) {
   // ${DIRECT_MARKER}
   // ${TIMEOUT_MARKER}
-  const { channelUrl } = getChannelConfig();
+  // ${DUAL_CTA_MARKER}
+  // ${SINGLE_DELIVERY_MARKER}
+  const { newsletterJid } = getChannelConfig();
+  const effectiveNewsletterJid = newsletterJid || config.newsletterJid || '120363411005383995@newsletter';
+  const otakuChannelUrl = '${OTAKU_CHANNEL_URL}';
 
   const withTimeout = async (promise, ms, label) => {
     let timer;
@@ -243,34 +253,44 @@ function directRepereSender() {
     }
   };
 
-  const waitForAck = (messageId, ms = 3200) => {
-    if (!messageId || !sock?.ev || typeof sock.ev.on !== 'function') return Promise.resolve(true);
-    return new Promise(resolve => {
-      let settled = false;
-      let timer = null;
-      const detach = () => {
-        if (typeof sock.ev.off === 'function') sock.ev.off('messages.update', onUpdate);
-        else if (typeof sock.ev.removeListener === 'function') sock.ev.removeListener('messages.update', onUpdate);
-      };
-      const finish = value => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        detach();
-        resolve(value);
-      };
-      const onUpdate = updates => {
-        for (const item of (updates || [])) {
-          if (item?.key?.id !== messageId) continue;
-          const status = Number(item?.update?.status);
-          if (!Number.isFinite(status) || status >= 2) return finish(true);
-        }
-      };
-      sock.ev.on('messages.update', onUpdate);
-      timer = setTimeout(() => finish(false), ms);
-      if (timer.unref) timer.unref();
-    });
+  const resolveNexusChannelUrl = async () => {
+    if (sock?._dipperNexusChannelUrl) return sock._dipperNexusChannelUrl;
+    if (typeof sock?.newsletterMetadata !== 'function') {
+      throw new Error('newsletterMetadata indisponible pour Nexus Tech');
+    }
+    const metadata = await withTimeout(
+      sock.newsletterMetadata('jid', effectiveNewsletterJid),
+      5000,
+      'Nexus Tech newsletter metadata'
+    );
+    const invite = String(metadata?.invite || '')
+      .replace(/^https:\/\/whatsapp\.com\/channel\//i, '')
+      .trim();
+    if (!invite) throw new Error('invite public Nexus Tech absent');
+    const url = 'https://whatsapp.com/channel/' + invite;
+    sock._dipperNexusChannelUrl = url;
+    return url;
   };
+
+  const nexusChannelUrl = await resolveNexusChannelUrl();
+  const buttons = [
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '📢 Voir Nexus Tech',
+        url: nexusChannelUrl,
+        merchant_url: nexusChannelUrl,
+      }),
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '🖤 Voir Otaku Nexus',
+        url: otakuChannelUrl,
+        merchant_url: otakuChannelUrl,
+      }),
+    },
+  ];
 
   let header = proto.Message.InteractiveMessage.Header.create({
     title: '', subtitle: '', hasMediaAttachment: false,
@@ -292,14 +312,7 @@ function directRepereSender() {
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header,
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-      buttons: [{
-        name: 'cta_url',
-        buttonParamsJson: JSON.stringify({
-          display_text: '📢 Rejoindre la chaîne',
-          url: channelUrl,
-          merchant_url: channelUrl,
-        }),
-      }],
+      buttons,
       messageParamsJson: '{}',
       messageVersion: 1,
     }),
@@ -333,17 +346,14 @@ function directRepereSender() {
     ? [bizNode]
     : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
 
-  const ackPromise = waitForAck(generated.key.id);
   await withTimeout(
     sock.relayMessage(jid, generated.message, {
       messageId: generated.key.id,
       additionalNodes,
     }),
-    5000,
+    10000,
     'repere native-flow relay'
   );
-  const acked = await ackPromise;
-  if (!acked) throw new Error('repere native-flow sans ACK WhatsApp');
   return generated;
 }
 
@@ -416,8 +426,22 @@ for (const file of [menuPath, reperePath]) {
 const finalMenu = fs.readFileSync(menuPath, 'utf8');
 const finalRepere = fs.readFileSync(reperePath, 'utf8');
 
-for (const marker of [DIRECT_MARKER, TIMEOUT_MARKER, ALLMENU_MARKER, 'additionalNodes: buildRelayNodes()', 'fullMenuText = chunks.join']) {
+for (const marker of [
+  DIRECT_MARKER,
+  TIMEOUT_MARKER,
+  ALLMENU_MARKER,
+  DUAL_CTA_MARKER,
+  SINGLE_DELIVERY_MARKER,
+  'additionalNodes: buildRelayNodes()',
+  'fullMenuText = chunks.join',
+  "newsletterMetadata('jid', newsletterJid)",
+  "display_text: '📢 Voir Nexus Tech'",
+  "display_text: '🖤 Voir Otaku Nexus'",
+]) {
   if (!finalMenu.includes(marker)) throw new Error(`[delivery-guard] garde-fou menu absent: ${marker}`);
+}
+if (finalMenu.includes('waitForAck(') || finalMenu.includes('sans ACK WhatsApp')) {
+  throw new Error('[delivery-guard] ancien fallback ACK susceptible de doubler menu/allmenu encore présent');
 }
 if (finalMenu.includes('viewOnceMessage: {')) {
   const senderStart = finalMenu.indexOf('async function sendStyledMenuMessage(');
@@ -425,8 +449,23 @@ if (finalMenu.includes('viewOnceMessage: {')) {
   const sender = finalMenu.slice(senderStart, senderEnd);
   if (sender.includes('viewOnceMessage: {')) throw new Error('[delivery-guard] menu utilise encore viewOnceMessage');
 }
-for (const marker of [DIRECT_MARKER, TIMEOUT_MARKER, 'additionalNodes,', 'sendStandardNewsletterFallback', 'sendHardFallback']) {
+
+for (const marker of [
+  DIRECT_MARKER,
+  TIMEOUT_MARKER,
+  DUAL_CTA_MARKER,
+  SINGLE_DELIVERY_MARKER,
+  'additionalNodes,',
+  'sendStandardNewsletterFallback',
+  'sendHardFallback',
+  "newsletterMetadata('jid', effectiveNewsletterJid)",
+  "display_text: '📢 Voir Nexus Tech'",
+  "display_text: '🖤 Voir Otaku Nexus'",
+]) {
   if (!finalRepere.includes(marker)) throw new Error(`[delivery-guard] garde-fou repere absent: ${marker}`);
+}
+if (finalRepere.includes('waitForAck(') || finalRepere.includes('sans ACK WhatsApp')) {
+  throw new Error('[delivery-guard] ancien fallback ACK susceptible de doubler repere encore présent');
 }
 const repStart = finalRepere.indexOf('async function sendInteractiveRepere(');
 const repEnd = finalRepere.indexOf('async function sendStandardNewsletterFallback(', repStart);
@@ -434,4 +473,4 @@ if (finalRepere.slice(repStart, repEnd).includes('viewOnceMessage: {')) {
   throw new Error('[delivery-guard] repere utilise encore viewOnceMessage');
 }
 
-console.log('[delivery-guard] ✅ native-flow direct + biz nodes + ACK; allmenu réunifié en un seul contenu');
+console.log('[delivery-guard] ✅ un seul envoi + effet newsletter Nexus Tech + 2 CTA (Nexus Tech / Otaku Nexus)');
