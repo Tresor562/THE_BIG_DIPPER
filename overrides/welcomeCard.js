@@ -240,10 +240,11 @@ async function sendGroupEventCard(sock, groupId, options = {}) {
     console.warn('[welcomeCard] envoi interactif indisponible:', err.message);
   }
 
-  const channelUrl = config.social?.whatsappChannel || 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
+  // Dernier recours : une seule bulle, sans URL visible. Le chemin normal
+  // ci-dessus réutilise le moteur du menu et affiche les deux CTA.
   await sock.sendMessage(groupId, {
     image: buffer,
-    caption: `${text}\n\n📢 ${channelUrl}`,
+    caption: text,
     mentions: [participantJid],
     contextInfo: {
       forwardingScore: 1,
