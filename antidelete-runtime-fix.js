@@ -21,10 +21,11 @@ function replaceOnce(source, search, replacement, label) {
 }
 
 // 1) Réglages privés : updateUser() normalise déjà le JID en numéro.
-// getUserSettings() doit utiliser exactement la même clé.
+// getUserSettings() doit utiliser la même clé, tout en gardant la compatibilité
+// avec d'éventuelles anciennes entrées stockées sous le JID complet.
 let database = fs.readFileSync(databasePath, 'utf8');
 const oldUserSettings = `const getUserSettings = (chatId) => {\n  const users = readDB('users');\n  return users[chatId] || {};\n};`;
-const newUserSettings = `const getUserSettings = (chatId) => {\n  // [ANTIDELETE PRIVATE KEY NORMALIZATION]\n  const users = readDB('users');\n  const key = String(chatId).split('@')[0].split(':')[0];\n  return users[key] || {};\n};`;
+const newUserSettings = `const getUserSettings = (chatId) => {\n  // [ANTIDELETE PRIVATE KEY NORMALIZATION]\n  const users = readDB('users');\n  const key = String(chatId).split('@')[0].split(':')[0];\n  return users[key] || users[chatId] || {};\n};`;
 if (!database.includes('[ANTIDELETE PRIVATE KEY NORMALIZATION]')) {
   database = replaceOnce(database, oldUserSettings, newUserSettings, 'normalisation getUserSettings');
 }
@@ -56,6 +57,7 @@ const finalHandler = fs.readFileSync(handlerPath, 'utf8');
 
 for (const marker of [
   '[ANTIDELETE PRIVATE KEY NORMALIZATION]',
+  'return users[key] || users[chatId] || {};',
 ]) {
   if (!finalDatabase.includes(marker)) throw new Error(`[antidelete-fix] database incomplet: ${marker}`);
 }
