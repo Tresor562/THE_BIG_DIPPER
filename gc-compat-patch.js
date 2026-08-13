@@ -96,3 +96,4 @@ console.log('[gc-compat] ✅ compatibilité legacy validée avant unification');
 // afin que les audits legacy restent utiles, puis les audits globaux du build
 // vérifient l'artefact unifié réellement déployé.
 require('./group-status-unified-patch');
+require('./group-status-engine-test-patch');
