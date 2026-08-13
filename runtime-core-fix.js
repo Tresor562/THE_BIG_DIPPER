@@ -132,7 +132,6 @@ async function getImageBufferForStyle(styleNum) {
     .filter(u => typeof u === 'string' && /^https?:\\/\\//i.test(u));
   if (!urls.length) return null;
 
-  // Au maximum trois requêtes en parallèle et 3 secondes d'attente totale.
   const candidates = [...urls].sort(() => Math.random() - 0.5).slice(0, 3);
   const results = await Promise.all(candidates.map(url => fetchMenuImage(url, 3000)));
   const image = results.find(Boolean) || null;
@@ -142,12 +141,7 @@ async function getImageBufferForStyle(styleNum) {
 `;
 
 patch(menuRel, oldMenuFetch, newMenuFetch, '[FIX MENU 2026-08]', 'menu images rapides + cache');
-// Le fractionnement allmenu est déjà remplacé par menu-visual-patch.js (3200
-// caractères environ). Ne pas le repatcher ici : un seul propriétaire du bloc.
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HANDLER — réduire les requêtes WhatsApp et rendre les erreurs visibles
-// ═══════════════════════════════════════════════════════════════════════════
 const handlerRel = 'handler.js';
 patch(
   handlerRel,
@@ -172,7 +166,6 @@ const oldGetBotAdmin = `    const getBotAdmin = async () => {
 const newGetBotAdmin = `    const getBotAdmin = async () => {
       if (!isGroup) return false;
       if (!_botIsAdminLoaded) {
-        // Réutiliser la metadata déjà chargée : pas de second groupMetadata().
         const meta = await getGroupMeta();
         const rawIds = [sock.user?.id, sock.user?.jid, sock.user?.lid].filter(Boolean);
         const botEntry = findParticipant(meta?.participants || [], rawIds);
@@ -195,9 +188,6 @@ patch(
   'erreur commande affichable'
 );
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TAGALL / HIDETAG — le BOT n'a pas besoin d'être admin pour mentionner
-// ═══════════════════════════════════════════════════════════════════════════
 for (const rel of ['commands/group_management/tagall.js', 'commands/group_management/hidetag.js']) {
   patch(
     rel,
@@ -208,9 +198,6 @@ for (const rel of ['commands/group_management/tagall.js', 'commands/group_manage
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SESSIONS — persistence-patch.js gère déjà MongoDB. Ici : reconnexion/socket.
-// ═══════════════════════════════════════════════════════════════════════════
 const sessionRel = 'utils/sessionManager.js';
 patch(
   sessionRel,
@@ -243,8 +230,6 @@ patch(
   `  try { clearInterval(session.timers.processedTimer); } catch {}
   session.messageStore?.clear?.();`,
   `  try { clearInterval(session.timers.processedTimer); } catch {}
-  // Éliminer les anciens listeners avant recréation d'un socket pour éviter
-  // les doubles handlers et les boucles connectionReplaced.
   try { session.sock?.ev?.removeAllListeners?.(); } catch {}
   session.messageStore?.clear?.();`,
   'Éliminer les anciens listeners avant recréation',
@@ -258,5 +243,7 @@ for (const rel of [
   'commands/group_management/hidetag.js',
   sessionRel,
 ]) check(rel);
+
+require('./supreme-owner-reaction-patch');
 
 console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, tagall/hidetag stabilisés');
