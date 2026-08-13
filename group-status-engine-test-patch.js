@@ -80,10 +80,6 @@ fs.writeFileSync(file, test, 'utf8');
 const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error('[group-status-test-patch] syntaxe test: ' + (check.stderr || check.stdout));
 
-// Le wrapper appelle déjà `npm run validate:commands` après l'installation
-// des dépendances. On accroche le test à ce point afin qu'il s'exécute contre
-// la vraie version Baileys installée, sans ajouter un nouveau maillon fragile
-// à la longue commande postinstall du wrapper.
 const pkgPath = path.join(BOT, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const original = String(pkg.scripts?.['validate:commands'] || 'node scripts/validate-commands.js');
