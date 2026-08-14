@@ -70,8 +70,11 @@ require('./premium-runtime-verifier-patch');
 require('./command-response-guarantee-prep');
 require('./command-response-guarantee-patch');
 
-// .owner dédié : deux vCards + newsletter + réseaux sociaux.
+// .owner dédié : annonce + vCard du créateur + réseaux sociaux.
 require('./owner-premium-patch');
 
 // Bilingue global : français par défaut, anglais via .language.
 require('./bilingual-patch');
+
+// Dernière passe visuelle : heure Bénin sûre, vrai nom et espacements stables.
+require('./menu-ui-polish-patch');
