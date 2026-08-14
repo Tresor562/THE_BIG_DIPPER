@@ -71,12 +71,12 @@ if (!menu.includes(MARKER)) {
 }
 
 // Détection indépendante de la structure interne de la branche allmenu.
-// Si un futur patch réécrit le bloc `chunks[i]`, le contenu `ALL MENU` suffit.
+// Si un futur patch réécrit le bloc `chunks[i]`, le contenu du premier ALL MENU suffit.
 if (!menu.includes('[ALLMENU PREMIUM AUTO DETECT]')) {
   const hookRegex = /\n\s*const buildRelayNodes\s*=\s*\(\)\s*=>\s*\{/;
   const hookMatch = menu.match(hookRegex);
   if (!hookMatch || hookMatch.index == null) throw new Error('[special-presentation] ancre buildRelayNodes absente');
-  const hook = `\n  const autoAllMenuPremium = /(?:^|\\n)\\s*(?:📚\\s*)?\\*?ALL MENU\\b/i.test(String(text || '')); // [ALLMENU PREMIUM AUTO DETECT]\n  if (specialPresentation || autoAllMenuPremium) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || (autoAllMenuPremium ? 'allmenu' : 'special'),\n    });\n  }\n`;
+  const hook = `\n  const autoAllMenuPremium = /(?:^|\\n)\\s*(?:📚\\s*)?\\*?ALL MENU\\b(?!\\s*—\\s*SUITE)/i.test(String(text || '')); // [ALLMENU PREMIUM AUTO DETECT]\n  if (specialPresentation || autoAllMenuPremium) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || (autoAllMenuPremium ? 'allmenu' : 'special'),\n    });\n  }\n`;
 
   // Remplacer l'ancien hook premium s'il existe déjà, sinon l'insérer.
   const oldHookRegex = /\n\s*if \(specialPresentation\) \{[\s\S]*?commandName:\s*commandName \|\| 'special',\s*\}\);\s*\}/;
