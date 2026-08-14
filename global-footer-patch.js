@@ -84,13 +84,21 @@ if (!handler.includes('[GLOBAL FOOTER RELAY]')) {
 }
 
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-const prestart = String(pkg.scripts?.prestart || '');
+let prestart = String(pkg.scripts?.prestart || '');
 if (!prestart.includes('../global-footer-patch.js')) {
   pkg.scripts = pkg.scripts || {};
   const verifier = 'node scripts/verify-command-runtime.js';
-  pkg.scripts.prestart = prestart.includes(verifier)
-    ? prestart.replace(verifier, `node ../global-footer-patch.js && ${verifier}`)
-    : `${prestart}${prestart ? ' && ' : ''}node ../global-footer-patch.js`;
+  const special = 'node ../special-presentation-patch.js';
+
+  // Si le shell premium s'est déjà inscrit, on place le footer juste AVANT lui.
+  if (prestart.includes(special)) {
+    prestart = prestart.replace(special, `node ../global-footer-patch.js && ${special}`);
+  } else if (prestart.includes(verifier)) {
+    prestart = prestart.replace(verifier, `node ../global-footer-patch.js && ${verifier}`);
+  } else {
+    prestart = `${prestart}${prestart ? ' && ' : ''}node ../global-footer-patch.js`;
+  }
+  pkg.scripts.prestart = prestart;
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n');
 }
 
