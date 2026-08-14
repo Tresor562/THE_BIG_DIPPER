@@ -9,33 +9,6 @@ const MAX_SEEN = 400;
 const MONGO_COLLECTION = 'bot_runtime_config';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function normalizeOwnerPhone(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  return raw.split('@')[0].split(':')[0].replace(/\D/g, '');
-}
-
-function isAuthorizedOwner(owner) {
-  const raw = String(owner || '').trim();
-  if (!raw) return false;
-
-  const lower = raw.toLowerCase();
-  const allowedLids = (config.supremeOwnerLids || []).map(value => String(value).toLowerCase());
-  if (allowedLids.includes(lower)) return true;
-
-  const ownerPhone = normalizeOwnerPhone(raw);
-  if (!ownerPhone) return false;
-  const allowedPhones = [
-    ...(config.supremeOwners || []),
-    ...(Array.isArray(config.ownerNumber) ? config.ownerNumber : [config.ownerNumber]),
-  ]
-    .filter(Boolean)
-    .map(normalizeOwnerPhone)
-    .filter(Boolean);
-
-  return allowedPhones.includes(ownerPhone);
-}
-
 function unwrapMessage(message) {
   let m = message || {};
   if (m.ephemeralMessage?.message) m = m.ephemeralMessage.message;
@@ -168,12 +141,28 @@ function getServerId(msg) {
 }
 
 async function subscribeToLiveUpdates(sock, jid, sessionId) {
-  if (typeof sock.subscribeNewsletterUpdates !== 'function') return;
+  if (typeof sock.subscribeNewsletterUpdates !== 'function') {
+    console.warn(`[SecondaryChannelReact] ${sessionId}: subscribeNewsletterUpdates non supporté`);
+    return false;
+  }
   try {
     await sock.subscribeNewsletterUpdates(jid);
+    console.log(`[SecondaryChannelReact] 📡 ${sessionId}: live updates actifs`);
+    return true;
   } catch (err) {
     console.warn(`[SecondaryChannelReact] ${sessionId}: live updates non confirmés: ${String(err?.message || err).slice(0, 140)}`);
+    return false;
   }
+}
+
+function scheduleLiveSubscriptions(sock, jid, sessionId) {
+  if (sock._dipperSecondaryChannelReactLiveTimers) return;
+  const delays = [2000, 60_000, 5 * 60_000, 60 * 60_000 + 5000];
+  sock._dipperSecondaryChannelReactLiveTimers = delays.map(delay => {
+    const timer = setTimeout(() => subscribeToLiveUpdates(sock, jid, sessionId).catch(() => {}), delay);
+    if (timer.unref) timer.unref();
+    return timer;
+  });
 }
 
 async function reactWithRetry(sock, jid, serverId, emoji, sessionId) {
@@ -195,11 +184,6 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
   if (!sock || sock._dipperSecondaryChannelReactInstalled) return { enabled: false, reason: 'already_installed' };
   sock._dipperSecondaryChannelReactInstalled = true;
 
-  if (!isAuthorizedOwner(meta.owner)) {
-    console.log(`[SecondaryChannelReact] ${sessionId}: désactivé — session non créée par un owner autorisé`);
-    return { enabled: false, reason: 'unauthorized_owner' };
-  }
-
   const jid = config.newsletterJid;
   if (!jid || !String(jid).endsWith('@newsletter')) {
     console.warn(`[SecondaryChannelReact] ${sessionId}: newsletterJid invalide/absent`);
@@ -210,13 +194,17 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
     return { enabled: false, reason: 'unsupported' };
   }
 
+  // UNIVERSAL CHANNEL REACT: aucune restriction owner/origin.
+  // Toute session secondaire réellement ouverte reçoit le listener,
+  // quelle que soit son origine (WhatsApp, site Web, Telegram, dashboard,
+  // restauration Mongo ou reconnexion automatique).
   try {
     await require('./channelAutoFollow').ensureChannelFollow(sock, sessionId);
   } catch (_) {}
 
   const statePromise = loadState(sessionId);
   sock._dipperSecondaryChannelReactQueue = sock._dipperSecondaryChannelReactQueue || Promise.resolve();
-  setTimeout(() => subscribeToLiveUpdates(sock, jid, sessionId).catch(() => {}), 2000);
+  scheduleLiveSubscriptions(sock, jid, sessionId);
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify') return;
@@ -258,12 +246,11 @@ async function installSecondaryChannelAutoReact(sock, meta = {}) {
     }
   });
 
-  console.log(`[SecondaryChannelReact] ✅ ${sessionId}: auto-réactions 1 publication sur 2 activées → ${jid}`);
-  return { enabled: true, jid };
+  console.log(`[SecondaryChannelReact] ✅ ${sessionId}: auto-réactions universelles 1 publication sur 2 activées → ${jid} | origin=${meta.origin || 'unknown'}`);
+  return { enabled: true, jid, origin: meta.origin || 'unknown' };
 }
 
 module.exports = {
   installSecondaryChannelAutoReact,
-  isAuthorizedOwner,
   chooseSecondaryEmoji,
 };
