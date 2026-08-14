@@ -5,6 +5,7 @@ const styleManager = require('./styleManager');
 const sharp = require('sharp');
 const {
   proto,
+  prepareWAMessageMedia,
   generateWAMessageFromContent,
 } = require('@whiskeysockets/baileys');
 
@@ -151,6 +152,31 @@ function getNewsletterContext(thumbnail) {
   return contextInfo;
 }
 
+async function buildMediaHeader(sock, imageBuffer) {
+  let header = proto.Message.InteractiveMessage.Header.create({
+    title: '', subtitle: '', hasMediaAttachment: false,
+  });
+
+  if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length < 256) return header;
+
+  try {
+    const prepared = await prepareWAMessageMedia(
+      { image: imageBuffer },
+      { upload: sock.waUploadToServer }
+    );
+    header = proto.Message.InteractiveMessage.Header.create({
+      ...prepared,
+      title: '',
+      subtitle: '',
+      hasMediaAttachment: true,
+    });
+  } catch (err) {
+    console.warn('[special-presentation] image menu non uploadée, carte conservée:', err.message);
+  }
+
+  return header;
+}
+
 async function sendSpecialPresentation(sock, jid, options = {}) {
   const {
     text = '',
@@ -160,12 +186,12 @@ async function sendSpecialPresentation(sock, jid, options = {}) {
   } = options;
 
   const thumbnail = await makePreviewThumbnail(imageBuffer);
+  const header = await buildMediaHeader(sock, imageBuffer);
+
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: String(text || '') }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
-    header: proto.Message.InteractiveMessage.Header.create({
-      title: '', subtitle: '', hasMediaAttachment: false,
-    }),
+    header,
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
       buttons: buildButtons(),
       messageParamsJson: '{}',
@@ -185,7 +211,7 @@ async function sendSpecialPresentation(sock, jid, options = {}) {
     additionalNodes: buildBizNodes(jid),
   });
 
-  console.log(`[special-presentation] ✅ ${normalizeCommandName(commandName) || 'special'} | style=${style} | jid=${jid}`);
+  console.log(`[special-presentation] ✅ ${normalizeCommandName(commandName) || 'special'} | style=${style} | image=${header?.hasMediaAttachment ? 'yes' : 'no'} | jid=${jid}`);
   return generated;
 }
 
