@@ -25,15 +25,24 @@ for (const marker of [
   "name: 'owner'",
   "'2290146202259'",
   "'2290155745907'",
-  "display_text: label",
+  "https://t.me/tresor20009",
+  "https://www.facebook.com/profile.php?id=100078681750878",
+  "https://www.tiktok.com/@tresor20001",
+  "https://www.instagram.com/tresorhtn",
+  "https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07",
   "forwardedNewsletterMessageInfo",
   "💬 Message",
   "✈️ Telegram",
   "📘 Facebook",
+  "🎵 TikTok",
+  "📸 Instagram",
   "📢 Nexus Tech",
   "> Powered by 🌹 Mr Tresor 🌹",
 ]) {
   if (!final.includes(marker)) throw new Error(`[owner-premium] garde-fou absent: ${marker}`);
 }
 
-console.log('[owner-premium] ✅ .owner = 2 vCards + newsletter + CTA sociaux');
+const buttonCount = (final.match(/urlButton\('/g) || []).length - 1; // retire la déclaration de fonction
+if (buttonCount !== 6) throw new Error(`[owner-premium] 6 CTA attendus par contact, trouvé ${buttonCount}`);
+
+console.log('[owner-premium] ✅ .owner = 2 vCards + newsletter + 6 CTA vérifiés par contact');
