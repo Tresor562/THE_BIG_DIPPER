@@ -77,7 +77,7 @@ async function sendPairCodeCard(sock, jid, msg, code, cleanNumber, footer) {
   const body =
     `╭━≪• *🔑 ᴄᴏᴅᴇ ᴅᴇ ᴄᴏɴɴᴇxɪᴏɴ* •≫━╾╮\n` +
     `┃\n┃  *${displayCode}*\n┃\n` +
-    `╰━━━━━━━━━━━━━━━━━━╯\n\n` +
+    `╰━━━━━━━━━━━━━━━━━━━╯\n\n` +
     `📱 *ɴᴜᴍᴇ́ʀᴏ :* +${cleanNumber}\n\n` +
     `📱 *ᴇ́ᴛᴀᴘᴇs :*\n` +
     `*1.* Ouvre WhatsApp\n` +
