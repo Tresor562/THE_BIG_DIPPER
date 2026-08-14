@@ -30,6 +30,10 @@ for (const marker of [
   'soumission totale',
   'resolveOwnerProfileThumbnail',
   'await wait(2200)',
+  'sendActualVcard',
+  'contacts: {',
+  'vcard: buildVcard()',
+  'contactMessage || buildSyntheticContact(jid)',
   'forwardedNewsletterMessageInfo',
   'https://t.me/tresor20009',
   'https://www.facebook.com/profile.php?id=100078681750878',
@@ -54,4 +58,4 @@ if (final.includes('2290155745907')) {
 const buttonCount = (final.match(/urlButton\('/g) || []).length;
 if (buttonCount !== 6) throw new Error(`[owner-premium] 6 CTA attendus, trouvé ${buttonCount}`);
 
-console.log('[owner-premium] ✅ .owner = annonce + 1 vCard créateur + photo + 6 CTA');
+console.log('[owner-premium] ✅ .owner = annonce + vraie vCard + photo + 6 CTA');
