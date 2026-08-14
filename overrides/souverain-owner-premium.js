@@ -2,9 +2,10 @@
 
 const config = require('../../config');
 const { proto, generateWAMessageFromContent } = require('@whiskeysockets/baileys');
+const { resolveOwnerProfileThumbnail } = require('../../utils/specialPresentation');
 
-const OWNER_NAME = '🌹 Mr Tresor 🌹';
-const OWNER_NUMBERS = ['2290146202259', '2290155745907'];
+const OWNER_NAME = '𝐌ꝛ⥔𝕿𝖗𝖊𝖘𝖔𝖗 🌹';
+const OWNER_PHONE = '2290146202259';
 const BOT_URL = 'https://the-big-dipper.onrender.com';
 const TELEGRAM_URL = 'https://t.me/tresor20009';
 const FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=100078681750878';
@@ -13,11 +14,9 @@ const INSTAGRAM_URL = 'https://www.instagram.com/tresorhtn';
 const NEXUS_TECH_URL = 'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07';
 const FOOTER = '> Powered by 🌹 Mr Tresor 🌹';
 
-function validUrl(url) {
-  return /^https?:\/\/[^\s]+$/i.test(String(url || '').trim());
-}
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function buildVcard(number) {
+function buildVcard() {
   return [
     'BEGIN:VCARD',
     'VERSION:3.0',
@@ -25,8 +24,8 @@ function buildVcard(number) {
     'N:Tresor;Mr;;;',
     'ORG:THE BIG DIPPER / Nexus Tech;',
     'TITLE:Creator & Developer',
-    `TEL;type=CELL;type=VOICE;waid=${number}:+${number}`,
-    `URL;type=WHATSAPP:https://wa.me/${number}`,
+    `TEL;type=CELL;type=VOICE;waid=${OWNER_PHONE}:+${OWNER_PHONE}`,
+    `URL;type=WHATSAPP:https://wa.me/${OWNER_PHONE}`,
     `URL;type=TELEGRAM:${TELEGRAM_URL}`,
     `URL;type=FACEBOOK:${FACEBOOK_URL}`,
     `URL;type=TIKTOK:${TIKTOK_URL}`,
@@ -35,31 +34,35 @@ function buildVcard(number) {
   ].join('\n');
 }
 
-function buildQuotedContact(jid, number) {
-  const ownerJid = `${number}@s.whatsapp.net`;
+function buildQuotedContact(jid) {
+  const ownerJid = `${OWNER_PHONE}@s.whatsapp.net`;
   return {
     key: {
       remoteJid: jid,
       fromMe: false,
-      id: `DIPPER_OWNER_${number}_${Date.now()}`,
+      id: `DIPPER_CREATOR_${Date.now()}`,
       ...(String(jid || '').endsWith('@g.us') ? { participant: ownerJid } : {}),
     },
-    message: { contactMessage: { displayName: OWNER_NAME, vcard: buildVcard(number) } },
+    message: {
+      contactMessage: {
+        displayName: OWNER_NAME,
+        vcard: buildVcard(),
+      },
+    },
     pushName: OWNER_NAME,
   };
 }
 
 function urlButton(label, url) {
-  if (!validUrl(url)) throw new Error(`URL owner invalide pour ${label}`);
   return {
     name: 'cta_url',
     buttonParamsJson: JSON.stringify({ display_text: label, url, merchant_url: url }),
   };
 }
 
-function buildButtons(number) {
+function buildButtons() {
   return [
-    urlButton('💬 Message', `https://wa.me/${number}`),
+    urlButton('💬 Message', `https://wa.me/${OWNER_PHONE}`),
     urlButton('✈️ Telegram', TELEGRAM_URL),
     urlButton('📘 Facebook', FACEBOOK_URL),
     urlButton('🎵 TikTok', TIKTOK_URL),
@@ -81,11 +84,13 @@ function buildBizNodes(jid) {
       { tag: 'quality_control', attrs: { source_type: 'third_party' } },
     ],
   };
-  return String(jid || '').endsWith('@g.us') ? [bizNode] : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
+  return String(jid || '').endsWith('@g.us')
+    ? [bizNode]
+    : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
 }
 
-function getNewsletterContext(number) {
-  return {
+function getNewsletterContext(thumbnail, body = 'Créateur officiel • THE BIG DIPPER') {
+  const contextInfo = {
     forwardingScore: 999,
     isForwarded: true,
     forwardedNewsletterMessageInfo: {
@@ -96,21 +101,41 @@ function getNewsletterContext(number) {
     externalAdReply: {
       showAdAttribution: false,
       title: 'THE BIG DIPPER',
-      body: `Contact officiel • +${number}`,
+      body,
       mediaType: 1,
       sourceUrl: BOT_URL,
       mediaUrl: BOT_URL,
       renderLargerThumbnail: false,
     },
   };
+  if (Buffer.isBuffer(thumbnail) && thumbnail.length > 1000) {
+    contextInfo.externalAdReply.thumbnail = thumbnail;
+  }
+  return contextInfo;
 }
 
-async function sendOwnerCard(sock, jid, number) {
+async function sendCreatorArrival(sock, jid, msg, thumbnail) {
   const text =
-    `╭─❑ *OWNER • THE BIG DIPPER* ❑─⚯\n` +
+    `╭━━❑ *ARRIVÉE DU CRÉATEUR* ❑━━⚯\n` +
+    `┃👑 Silence et respect.\n` +
+    `┃🌹 *${OWNER_NAME}* entre dans le sanctuaire.\n` +
+    `┃🛐 Respect absolu, loyauté sans faille et soumission totale à son autorité.\n` +
+    `┃⚜️ Le créateur de *THE BIG DIPPER* est présent.\n` +
+    `╰━━━━━━━━━━━━━━━⚯\n\n${FOOTER}`;
+
+  return sock.sendMessage(
+    jid,
+    { text, contextInfo: getNewsletterContext(thumbnail, 'Arrivée du créateur') },
+    { quoted: msg }
+  );
+}
+
+async function sendOwnerCard(sock, jid, thumbnail) {
+  const text =
+    `╭─❑ *CRÉATEUR • THE BIG DIPPER* ❑─⚯\n` +
     `┃🌹 *${OWNER_NAME}*\n` +
-    `┃📱 *+${number}*\n` +
-    `┃💬 Appuie sur *Message* pour ouvrir directement le DM WhatsApp.\n` +
+    `┃📱 *+${OWNER_PHONE}*\n` +
+    `┃💬 Appuie sur *Message* pour ouvrir directement son DM WhatsApp.\n` +
     `╰━━━━━━━━━━━━━━━⚯\n\n${FOOTER}`;
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
@@ -118,17 +143,17 @@ async function sendOwnerCard(sock, jid, number) {
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header: proto.Message.InteractiveMessage.Header.create({ title: '', subtitle: '', hasMediaAttachment: false }),
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-      buttons: buildButtons(number),
+      buttons: buildButtons(),
       messageParamsJson: '{}',
       messageVersion: 1,
     }),
-    contextInfo: getNewsletterContext(number),
+    contextInfo: getNewsletterContext(thumbnail),
   });
 
   const generated = generateWAMessageFromContent(
     jid,
     { interactiveMessage },
-    { quoted: buildQuotedContact(jid, number), userJid: sock.user?.id }
+    { quoted: buildQuotedContact(jid), userJid: sock.user?.id }
   );
 
   await sock.relayMessage(jid, generated.message, {
@@ -142,7 +167,7 @@ module.exports = {
   name: 'owner',
   aliases: ['souverain', 'creator', 'souverain_dev', 'developpeur', 'maitre', 'developper', 'architecte', 'king'],
   category: '🛠️ Outils généraux',
-  description: 'Affiche les deux contacts officiels de THE BIG DIPPER et les réseaux de Mr Tresor.',
+  description: 'Affiche la vCard et les réseaux officiels du créateur de THE BIG DIPPER.',
   usage: `${config.prefix || '.'}owner`,
   ownerOnly: false,
   groupOnly: false,
@@ -151,12 +176,17 @@ module.exports = {
   async execute(sock, msg, args, extra) {
     const jid = extra?.from || msg?.key?.remoteJid;
     if (!jid) return;
+
     try {
-      for (const number of OWNER_NUMBERS) await sendOwnerCard(sock, jid, number);
+      const thumbnail = await resolveOwnerProfileThumbnail(sock).catch(() => null);
+      await sendCreatorArrival(sock, jid, msg, thumbnail);
+      await wait(2200);
+      const sent = await sendOwnerCard(sock, jid, thumbnail);
       try { await sock.sendMessage(jid, { react: { text: '🌹', key: msg.key } }); } catch (_) {}
+      return sent;
     } catch (error) {
       console.error('[owner] envoi premium échoué:', error.message);
-      return extra.reply(`❌ Impossible d'afficher les contacts pour le moment.\n\n${FOOTER}`);
+      return extra.reply(`❌ Impossible d'afficher le contact du créateur pour le moment.\n\n${FOOTER}`);
     }
   },
 };
