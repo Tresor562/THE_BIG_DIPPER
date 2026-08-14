@@ -18,6 +18,20 @@ function replaceRegion(startNeedle, endNeedle, replacement, label) {
   src = src.slice(0, start) + replacement + src.slice(end);
 }
 
+function patchReturnText(startNeedle, endNeedle, label) {
+  const start = src.indexOf(startNeedle);
+  const end = start < 0 ? -1 : src.indexOf(endNeedle, start + startNeedle.length);
+  if (start < 0 || end < 0) return false;
+  let region = src.slice(start, end);
+  if (!region.includes('return disciplineMenuText(text);')) {
+    const next = region.replace(/return\s+text;\s*\}\s*$/, 'return disciplineMenuText(text);\n}\n\n');
+    if (next === region) throw new Error(`[menu-ui] ${label}: return text introuvable`);
+    region = next;
+    src = src.slice(0, start) + region + src.slice(end);
+  }
+  return true;
+}
+
 if (!src.includes('[BENIN GREETING SAFE]')) {
   replaceRegion(
     'function getGreeting() {',
@@ -68,15 +82,27 @@ src = src.replace(
   'let text = buildImmersiveHeader(style, senderJid, count, botName);',
   'let text = buildImmersiveHeader(style, senderJid, count, botName, displayName);'
 );
+patchReturnText('function buildCategoryOverview(', '// Détail d\'une catégorie', 'aperçu menu');
 
-const overviewStart = src.indexOf('function buildCategoryOverview(');
-const overviewEnd = overviewStart < 0 ? -1 : src.indexOf('// Détail d\'une catégorie', overviewStart);
-if (overviewStart < 0 || overviewEnd < 0) throw new Error('[menu-ui] buildCategoryOverview introuvable');
-let overview = src.slice(overviewStart, overviewEnd);
-if (!overview.includes('return disciplineMenuText(text);')) {
-  overview = overview.replace(/return\s+text;\s*\}\s*$/, 'return disciplineMenuText(text);\n}\n\n');
+src = src.replace(
+  'let text = buildImmersiveHeader(style, senderJid, allCount, botName);',
+  "let text = buildImmersiveHeader(style, senderJid, allCount, botName, context.displayName || '');"
+);
+patchReturnText('function buildCategoryDetail(', '// ══════════════════════════════════════════════════════════════\n// 🔎 MOTEUR DE RECHERCHE', 'détail catégorie');
+
+src = src.replace(
+  'buildImmersiveHeader(style, senderJid, count, botName) +',
+  "buildImmersiveHeader(style, senderJid, count, botName, context.displayName || '') +"
+);
+if (src.includes('function buildAllMenuChunks(')) {
+  const allStart = src.indexOf('function buildAllMenuChunks(');
+  const allEnd = src.indexOf('\nmodule.exports = {', allStart);
+  if (allEnd > allStart) {
+    let all = src.slice(allStart, allEnd);
+    all = all.replaceAll('chunks.push((current + footer).trim());', 'chunks.push(disciplineMenuText((current + footer).trim()));');
+    src = src.slice(0, allStart) + all + src.slice(allEnd);
+  }
 }
-src = src.slice(0, overviewStart) + overview + src.slice(overviewEnd);
 
 src = src.replace(
   /entry\.prefix,\s*entry\.categoryNames,\s*entry\.categories,\s*entry\.count,\s*entry\.senderJid\s*\n\s*\);/,
@@ -97,6 +123,13 @@ src = src.replace(
   'buildCategoryOverview(styleActif, botName, ownerName, userRank, prefix, categoryNames, categories, count, rawSender, displayName);'
 );
 
+if (!src.includes('[ALLMENU REAL DISPLAY NAME]')) {
+  src = src.replace(
+    /(if \(body === 'allmenu'\) \{[\s\S]{0,300}?const ctx = buildMenuContext\(rawSender, isSupreme, sock\);)/,
+    "$1\n    ctx.displayName = displayName; // [ALLMENU REAL DISPLAY NAME]"
+  );
+}
+
 if (!/senderJid:\s*rawSender,\s*displayName/.test(src)) {
   src = src.replace(
     /categoryNames,\s*categories,\s*count,\s*senderJid:\s*rawSender,\s*\n\s*currentCategory:/,
@@ -112,9 +145,11 @@ for (const marker of [
   MARKER,
   '[DISPLAY NAME NO LID]',
   '[MENU REAL DISPLAY NAME]',
+  '[ALLMENU REAL DISPLAY NAME]',
   'return disciplineMenuText(text);',
   'entry.displayName',
   'senderJid: rawSender, displayName',
+  "context.displayName || ''",
 ]) {
   if (!final.includes(marker)) throw new Error('[menu-ui] garde-fou absent: ' + marker);
 }
@@ -122,4 +157,4 @@ for (const marker of [
 const check = spawnSync(process.execPath, ['--check', menuPath], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error('[menu-ui] syntaxe menu invalide: ' + (check.stderr || check.stdout));
 
-console.log('[menu-ui] ✅ heure Bénin + nom réel + 21 styles disciplinés + navigation persistante');
+console.log('[menu-ui] ✅ heure Bénin + nom réel + catégories/allmenu + 21 styles disciplinés');
