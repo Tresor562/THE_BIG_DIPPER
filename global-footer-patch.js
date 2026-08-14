@@ -29,15 +29,14 @@ if (!rs.includes(MARKER)) {
   rs = rs.replace(getProfileOld, getProfileNew);
 
   const sanitizeAnchor = `function sanitizeLegacyText(text, style) {\n  if (typeof text !== 'string' || !text) return text;`;
-  const sanitizeReplacement = `function sanitizeLegacyText(text, style) {\n  if (typeof text !== 'string' || !text) return text;\n  text = String(text).split('\\n').map(line => {\n    const compact = line.trim().replace(/\\*/g, '');\n    if (/^>?\\s*powered by\\s+🌹\\s*(?:mr|mꝛ|𝐌ꝛ).*tresor.*🌹$/iu.test(compact)) return GLOBAL_FOOTER;\n    return line;\n  }).join('\\n');`;
+  const sanitizeReplacement = `function sanitizeLegacyText(text, style) {\n  if (typeof text !== 'string' || !text) return text;\n  text = String(text).split('\\n').map(line => {\n    const compact = line.trim().replace(/\\*/g, '');\n    if (/^>?\\s*powered by\\s+🌹.*🌹$/iu.test(compact)) return GLOBAL_FOOTER;\n    return line;\n  }).join('\\n');`;
   if (!rs.includes(sanitizeAnchor)) throw new Error('[global-footer] sanitizeLegacyText introuvable');
   rs = rs.replace(sanitizeAnchor, sanitizeReplacement);
 
   const decorateAnchor = `function decoratePayload(payload, style) {`;
   if (!rs.includes(decorateAnchor)) throw new Error('[global-footer] decoratePayload introuvable');
-  const helpers = `function ensureGlobalFooter(text) {\n  if (typeof text !== 'string' || !text.trim()) return text;\n  const lines = String(text).replace(/\\r\\n/g, '\\n').split('\\n');\n  const kept = lines.filter(line => {\n    const compact = line.trim().replace(/\\*/g, '');\n    return !/^>?\\s*powered by\\s+🌹\\s*(?:mr|mꝛ|𝐌ꝛ).*tresor.*🌹$/iu.test(compact);\n  });\n  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();\n  return kept.join('\\n') + '\\n\\n' + GLOBAL_FOOTER;\n}\n\nfunction decorateRelayMessage(message, style) {\n  if (!message || typeof message !== 'object') return message;\n  if (message.protocolMessage || message.reactionMessage) return message;\n  const out = { ...message };\n  if (typeof out.conversation === 'string') out.conversation = ensureGlobalFooter(sanitizeLegacyText(out.conversation, style));\n  if (out.extendedTextMessage?.text) out.extendedTextMessage = { ...out.extendedTextMessage, text: ensureGlobalFooter(sanitizeLegacyText(out.extendedTextMessage.text, style)) };\n  if (out.imageMessage?.caption) out.imageMessage = { ...out.imageMessage, caption: ensureGlobalFooter(sanitizeLegacyText(out.imageMessage.caption, style)) };\n  if (out.videoMessage?.caption) out.videoMessage = { ...out.videoMessage, caption: ensureGlobalFooter(sanitizeLegacyText(out.videoMessage.caption, style)) };\n  if (out.interactiveMessage?.body?.text) {\n    out.interactiveMessage = { ...out.interactiveMessage, body: { ...out.interactiveMessage.body, text: ensureGlobalFooter(out.interactiveMessage.body.text) } };\n  }\n  if (out.viewOnceMessage?.message) out.viewOnceMessage = { ...out.viewOnceMessage, message: decorateRelayMessage(out.viewOnceMessage.message, style) };\n  if (out.viewOnceMessageV2?.message) out.viewOnceMessageV2 = { ...out.viewOnceMessageV2, message: decorateRelayMessage(out.viewOnceMessageV2.message, style) };\n  if (out.ephemeralMessage?.message) out.ephemeralMessage = { ...out.ephemeralMessage, message: decorateRelayMessage(out.ephemeralMessage.message, style) };\n  return out;\n}\n\n`;
+  const helpers = `function ensureGlobalFooter(text) {\n  if (typeof text !== 'string' || !text.trim()) return text;\n  const lines = String(text).replace(/\\r\\n/g, '\\n').split('\\n');\n  const kept = lines.filter(line => {\n    const compact = line.trim().replace(/\\*/g, '');\n    return !/^>?\\s*powered by\\s+🌹.*🌹$/iu.test(compact);\n  });\n  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();\n  return kept.join('\\n') + '\\n\\n' + GLOBAL_FOOTER;\n}\n\nfunction decorateRelayMessage(message, style) {\n  if (!message || typeof message !== 'object') return message;\n  if (message.protocolMessage || message.reactionMessage) return message;\n  const out = { ...message };\n  if (typeof out.conversation === 'string') out.conversation = ensureGlobalFooter(sanitizeLegacyText(out.conversation, style));\n  if (out.extendedTextMessage?.text) out.extendedTextMessage = { ...out.extendedTextMessage, text: ensureGlobalFooter(sanitizeLegacyText(out.extendedTextMessage.text, style)) };\n  if (out.imageMessage?.caption) out.imageMessage = { ...out.imageMessage, caption: ensureGlobalFooter(sanitizeLegacyText(out.imageMessage.caption, style)) };\n  if (out.videoMessage?.caption) out.videoMessage = { ...out.videoMessage, caption: ensureGlobalFooter(sanitizeLegacyText(out.videoMessage.caption, style)) };\n  if (out.interactiveMessage?.body?.text) {\n    out.interactiveMessage = { ...out.interactiveMessage, body: { ...out.interactiveMessage.body, text: ensureGlobalFooter(out.interactiveMessage.body.text) } };\n  }\n  if (out.viewOnceMessage?.message) out.viewOnceMessage = { ...out.viewOnceMessage, message: decorateRelayMessage(out.viewOnceMessage.message, style) };\n  if (out.viewOnceMessageV2?.message) out.viewOnceMessageV2 = { ...out.viewOnceMessageV2, message: decorateRelayMessage(out.viewOnceMessageV2.message, style) };\n  if (out.ephemeralMessage?.message) out.ephemeralMessage = { ...out.ephemeralMessage, message: decorateRelayMessage(out.ephemeralMessage.message, style) };\n  return out;\n}\n\n`;
   rs = rs.replace(decorateAnchor, helpers + decorateAnchor);
-
   rs = rs.replace(
     `    if (cleaned !== next.text) { next.text = cleaned; changed = true; }`,
     `    cleaned = ensureGlobalFooter(cleaned);\n    if (cleaned !== next.text) { next.text = cleaned; changed = true; }`
@@ -66,6 +65,7 @@ if (!sm.includes(MARKER)) {
 }
 
 let menu = fs.readFileSync(menuPath, 'utf8');
+menu = menu.replace(/footer:\s*\(\)\s*=>\s*`[^`]*`,/g, `footer: () => \`${FOOTER}\`,`);
 menu = menu.replace(/const SIGNATURE = [^;]+;/, `const SIGNATURE = '\\n${FOOTER}'; // ${MARKER}`);
 fs.writeFileSync(menuPath, menu, 'utf8');
 
@@ -83,7 +83,6 @@ if (!handler.includes('[GLOBAL FOOTER RELAY]')) {
   fs.writeFileSync(handlerPath, handler, 'utf8');
 }
 
-// Persistance : rejouer ce garde-fou à chaque npm start du bot Render.
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const prestart = String(pkg.scripts?.prestart || '');
 if (!prestart.includes('../global-footer-patch.js')) {
