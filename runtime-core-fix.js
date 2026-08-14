@@ -245,5 +245,6 @@ for (const rel of [
 ]) check(rel);
 
 require('./supreme-owner-reaction-patch');
+require('./connected-owner-command-audit-fix');
 
-console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, tagall/hidetag stabilisés');
+console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, tagall/hidetag + accès connected-owner stabilisés');
