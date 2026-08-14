@@ -16,9 +16,6 @@ for (const file of [menuPath, categoryOverride]) {
 
 let menu = fs.readFileSync(menuPath, 'utf8');
 
-// Le moteur visuel est injecté par menu-visual-patch.js mais était jusqu'ici
-// privé au module. Les routes "Download menu", "AI menu", etc. doivent
-// utiliser exactement le même expéditeur et le même renderer de catégorie.
 const exportsToAdd = [];
 if (!menu.includes('module.exports.sendStyledMenuMessage = sendStyledMenuMessage;')) {
   exportsToAdd.push('module.exports.sendStyledMenuMessage = sendStyledMenuMessage;');
@@ -64,6 +61,6 @@ for (const marker of [
 
 console.log('[category-interactive] ✅ menus de catégories = style + newsletter + CTA');
 
-// La correction floue des commandes doit utiliser exactement le même moteur
-// visuel que les menus de catégories : style actif + newsletter + CTA.
+// Correction floue : même moteur interactif, puis réduction visuelle dédiée.
 require('./unknown-command-visual-patch');
+require('./unknown-command-compact-patch');
