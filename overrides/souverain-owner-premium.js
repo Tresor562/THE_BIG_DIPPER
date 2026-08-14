@@ -6,10 +6,10 @@ const { proto, generateWAMessageFromContent } = require('@whiskeysockets/baileys
 const OWNER_NAME = '🌹 Mr Tresor 🌹';
 const OWNER_NUMBERS = ['2290146202259', '2290155745907'];
 const BOT_URL = 'https://the-big-dipper.onrender.com';
-const TELEGRAM_URL = 'https://t.me/tresor20001';
+const TELEGRAM_URL = 'https://t.me/tresor20009';
 const FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=100078681750878';
-const TIKTOK_URL = String(process.env.OWNER_TIKTOK_URL || '').trim();
-const INSTAGRAM_URL = String(process.env.OWNER_INSTAGRAM_URL || '').trim();
+const TIKTOK_URL = 'https://www.tiktok.com/@tresor20001';
+const INSTAGRAM_URL = 'https://www.instagram.com/tresorhtn';
 const NEXUS_TECH_URL = 'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07';
 const FOOTER = '> Powered by 🌹 Mr Tresor 🌹';
 
@@ -28,6 +28,9 @@ function buildVcard(number) {
     `TEL;type=CELL;type=VOICE;waid=${number}:+${number}`,
     `URL;type=WHATSAPP:https://wa.me/${number}`,
     `URL;type=TELEGRAM:${TELEGRAM_URL}`,
+    `URL;type=FACEBOOK:${FACEBOOK_URL}`,
+    `URL;type=TIKTOK:${TIKTOK_URL}`,
+    `URL;type=INSTAGRAM:${INSTAGRAM_URL}`,
     'END:VCARD',
   ].join('\n');
 }
@@ -47,7 +50,7 @@ function buildQuotedContact(jid, number) {
 }
 
 function urlButton(label, url) {
-  if (!validUrl(url)) return null;
+  if (!validUrl(url)) throw new Error(`URL owner invalide pour ${label}`);
   return {
     name: 'cta_url',
     buttonParamsJson: JSON.stringify({ display_text: label, url, merchant_url: url }),
@@ -62,7 +65,7 @@ function buildButtons(number) {
     urlButton('🎵 TikTok', TIKTOK_URL),
     urlButton('📸 Instagram', INSTAGRAM_URL),
     urlButton('📢 Nexus Tech', NEXUS_TECH_URL),
-  ].filter(Boolean);
+  ];
 }
 
 function buildBizNodes(jid) {
