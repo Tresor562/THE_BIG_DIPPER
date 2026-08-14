@@ -2,6 +2,7 @@
 
 const config = require('../config');
 const styleManager = require('./styleManager');
+const sharp = require('sharp');
 const {
   proto,
   generateWAMessageFromContent,
@@ -15,17 +16,10 @@ const NEXUS_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07
 const OTAKU_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
 const SUPPORT_GROUP_URL = 'https://chat.whatsapp.com/Dm7yX11U7vmCCFM240sNKq?s=cl&p=a&ilr=1';
 
-// Commandes d'identité, de navigation et d'état considérées comme « spéciales ».
-// Le registre est volontairement central : ajouter un nom ici suffit pour que
-// les réponses texte de cette commande reçoivent la même enveloppe premium.
 const SPECIAL_COMMANDS = new Set([
-  // Navigation / découverte
   'menu', 'grimoire', 'allmenu', 'commands', 'index', 'menu2', 'help',
-  // État / identité du bot
   'ping', 'alive', 'uptime', 'botinfo', 'botstatus', 'info', 'status', 'presence',
-  // Identité / communauté
   'repere', 'repère', 'owner', 'support', 'freebot', 'about', 'channelid',
-  // Sessions / configuration importante
   'pair', 'sessions', 'session', 'mode', 'prefix', 'setprefix', 'setmode',
   'setbotname', 'setmenuimage', 'setnewsletter', 'update',
 ]);
@@ -120,7 +114,19 @@ function buildBizNodes(jid) {
     : [{ tag: 'bot', attrs: { biz_bot: '1' } }, bizNode];
 }
 
-function getNewsletterContext(imageBuffer) {
+async function makePreviewThumbnail(imageBuffer) {
+  if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length < 256) return null;
+  try {
+    return await sharp(imageBuffer)
+      .resize(320, 320, { fit: 'cover', position: 'centre', withoutEnlargement: true })
+      .jpeg({ quality: 72, mozjpeg: true })
+      .toBuffer();
+  } catch (_) {
+    return imageBuffer.length <= 120 * 1024 ? imageBuffer : null;
+  }
+}
+
+function getNewsletterContext(thumbnail) {
   const contextInfo = {
     forwardingScore: 999,
     isForwarded: true,
@@ -139,8 +145,8 @@ function getNewsletterContext(imageBuffer) {
       renderLargerThumbnail: true,
     },
   };
-  if (Buffer.isBuffer(imageBuffer) && imageBuffer.length > 1000) {
-    contextInfo.externalAdReply.thumbnail = imageBuffer;
+  if (Buffer.isBuffer(thumbnail) && thumbnail.length > 1000) {
+    contextInfo.externalAdReply.thumbnail = thumbnail;
   }
   return contextInfo;
 }
@@ -153,28 +159,25 @@ async function sendSpecialPresentation(sock, jid, options = {}) {
     commandName = '',
   } = options;
 
-  const contextInfo = getNewsletterContext(imageBuffer);
+  const thumbnail = await makePreviewThumbnail(imageBuffer);
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: String(text || '') }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header: proto.Message.InteractiveMessage.Header.create({
-      title: '',
-      subtitle: '',
-      hasMediaAttachment: false,
+      title: '', subtitle: '', hasMediaAttachment: false,
     }),
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
       buttons: buildButtons(),
       messageParamsJson: '{}',
       messageVersion: 1,
     }),
-    contextInfo,
+    contextInfo: getNewsletterContext(thumbnail),
   });
 
-  const ownerQuote = buildOwnerQuotedMessage(jid);
   const generated = generateWAMessageFromContent(
     jid,
     { interactiveMessage },
-    { quoted: ownerQuote, userJid: sock.user?.id }
+    { quoted: buildOwnerQuotedMessage(jid), userJid: sock.user?.id }
   );
 
   await sock.relayMessage(jid, generated.message, {
