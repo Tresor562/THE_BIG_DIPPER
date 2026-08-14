@@ -92,8 +92,6 @@ async function makePreviewThumbnail(imageBuffer) {
   }
 }
 
-// La grande image reste celle du style actif. La petite vignette de la carte
-// THE BIG DIPPER est, elle, la photo de profil WhatsApp du créateur.
 async function resolveOwnerProfileThumbnail(sock) {
   if (!sock || typeof sock !== 'object') return null;
   const cached = ownerProfileCache.get(sock);
@@ -113,7 +111,15 @@ async function resolveOwnerProfileThumbnail(sock) {
       }
     }
   } catch (err) {
-    console.warn('[special-presentation] photo owner indisponible:', err.message);
+    console.warn('[special-presentation] photo owner distante indisponible:', err.message);
+  }
+
+  // Fallback garanti : miniature embarquée depuis la 2e image fournie.
+  if (!Buffer.isBuffer(buffer) || buffer.length < 256) {
+    try {
+      const embedded = require('./ownerProfileImage');
+      if (Buffer.isBuffer(embedded) && embedded.length > 256) buffer = embedded;
+    } catch (_) {}
   }
 
   ownerProfileCache.set(sock, { ts: Date.now(), buffer });
@@ -139,9 +145,7 @@ function getNewsletterContext(ownerThumbnail) {
       renderLargerThumbnail: false,
     },
   };
-  if (Buffer.isBuffer(ownerThumbnail) && ownerThumbnail.length > 1000) {
-    contextInfo.externalAdReply.thumbnail = ownerThumbnail;
-  }
+  if (Buffer.isBuffer(ownerThumbnail) && ownerThumbnail.length > 1000) contextInfo.externalAdReply.thumbnail = ownerThumbnail;
   return contextInfo;
 }
 
@@ -159,38 +163,22 @@ async function buildMediaHeader(sock, imageBuffer) {
 
 async function sendSpecialPresentation(sock, jid, options = {}) {
   const { text = '', style = styleManager.getStyle(), imageBuffer = null, commandName = '' } = options;
-
-  // Grande image = style actif (menu/ping/repere).
   const effectiveImage = await resolveImageBuffer(style, imageBuffer);
   const header = await buildMediaHeader(sock, effectiveImage);
-
-  // Petite image au-dessus = photo du créateur.
   const ownerThumbnail = await resolveOwnerProfileThumbnail(sock);
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: String(text || '') }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header,
-    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-      buttons: buildButtons(), messageParamsJson: '{}', messageVersion: 1,
-    }),
+    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({ buttons: buildButtons(), messageParamsJson: '{}', messageVersion: 1 }),
     contextInfo: getNewsletterContext(ownerThumbnail),
   });
 
-  const generated = generateWAMessageFromContent(
-    jid,
-    { interactiveMessage },
-    { quoted: buildOwnerQuotedMessage(jid), userJid: sock.user?.id }
-  );
-  await sock.relayMessage(jid, generated.message, {
-    messageId: generated.key.id,
-    additionalNodes: buildBizNodes(jid),
-  });
+  const generated = generateWAMessageFromContent(jid, { interactiveMessage }, { quoted: buildOwnerQuotedMessage(jid), userJid: sock.user?.id });
+  await sock.relayMessage(jid, generated.message, { messageId: generated.key.id, additionalNodes: buildBizNodes(jid) });
   console.log(`[special-presentation] ✅ ${normalizeCommandName(commandName) || 'special'} | style=${style} | image=${header?.hasMediaAttachment ? 'yes' : 'no'} | ownerThumb=${ownerThumbnail ? 'yes' : 'no'} | jid=${jid}`);
   return generated;
 }
 
-module.exports = {
-  OWNER_PHONE, OWNER_NAME, BOT_TITLE, BOT_URL, SPECIAL_COMMANDS,
-  isSpecialCommand, sendSpecialPresentation, resolveOwnerProfileThumbnail,
-};
+module.exports = { OWNER_PHONE, OWNER_NAME, BOT_TITLE, BOT_URL, SPECIAL_COMMANDS, isSpecialCommand, sendSpecialPresentation, resolveOwnerProfileThumbnail };
