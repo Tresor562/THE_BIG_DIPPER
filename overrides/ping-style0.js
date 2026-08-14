@@ -7,6 +7,7 @@
  */
 const os = require('os');
 const config = require('../../config');
+const styleManager = require('../../utils/styleManager');
 const { getConnectedOwnerName } = require('../../utils/ownerIdentity');
 
 function normalizePhone(value) {
@@ -73,7 +74,10 @@ function getNewsletterContext() {
   };
 }
 
-async function measureLatency(sock, from) {
+// [PING SINGLE RESPONSE]
+// Mesure la latence via la présence WhatsApp sans envoyer une bulle de sonde
+// qui devrait ensuite être supprimée. Le ping reste donc une réponse unique.
+async function measureLatencyWithoutMessage(sock, from) {
   const start = Date.now();
   if (typeof sock?.sendPresenceUpdate !== 'function') return 1;
   try {
@@ -100,7 +104,7 @@ module.exports = {
     const { reply, from } = extra;
 
     try {
-      const latency = await measureLatency(sock, from);
+      const latency = await measureLatencyWithoutMessage(sock, from);
       const totalRam = os.totalmem();
       const freeRam = os.freemem();
       const usedRam = totalRam - freeRam;
@@ -142,12 +146,15 @@ module.exports = {
         `╰━━━━━━━━━━━━━━━⚯\n` +
         `> 𝐏𝐎𝐖𝐄𝐑𝐄𝐃 𝐁𝐘 𝐓𝐇𝐄 𝐁𝐈𝐆 𝐃𝐈𝐏𝐏𝐄𝐑`;
 
+      // [PING DUAL CHANNEL CTA]
+      // Utilise le même moteur interactif que menu/allmenu afin de conserver
+      // une seule réponse et la CTA newsletter attendue par le runtime.
       try {
         const menu = require('./menu');
         if (typeof menu.sendStyledMenuMessage === 'function') {
           return await menu.sendStyledMenuMessage(sock, from, {
             text,
-            style: 0,
+            style: styleManager.getStyle(),
             quoted: from?.endsWith('@g.us') ? msg : null,
             mentions: [],
             withImage: false,
