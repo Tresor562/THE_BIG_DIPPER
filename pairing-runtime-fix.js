@@ -47,6 +47,36 @@ patch(
   'statut registered synchronisé'
 );
 
+// [FIX COMMANDES SOUS-SESSIONS]
+// Baileys peut livrer les messages envoyés depuis le téléphone du compte
+// connecté avec type='append' et fromMe=true. Le bot principal gère déjà ce
+// cas, mais sessionManager.js ignorait tout ce qui n'était pas 'notify'.
+// Résultat : session affichée connectée, mais les commandes tapées depuis le
+// compte connecté n'atteignent jamais handler.handleMessage().
+patch(
+  sessionRel,
+  "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify') return;",
+  `  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    // [FIX APPEND OWNER] accepter les messages normaux et les messages
+    // envoyés depuis le compte connecté, souvent livrés en 'append'.
+    if (type !== 'notify' && type !== 'append') return;`,
+  '[FIX APPEND OWNER]',
+  'messages append du compte connecté acceptés'
+);
+
+patch(
+  sessionRel,
+  "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;",
+  `    for (const msg of messages) {
+      if (!msg.message || !msg.key?.id) continue;
+
+      // Les append non-fromMe sont généralement des replays/synchronisations
+      // d'historique : ne pas les exécuter pour éviter les doubles commandes.
+      if (type === 'append' && !msg.key.fromMe) continue;`,
+  "if (type === 'append' && !msg.key.fromMe) continue;",
+  'filtre anti-doublon append'
+);
+
 // Le pairing par code ne dépend pas d'un QR. requestPairingCode() conserve
 // son petit délai de grâce propre et appelle directement Baileys. Cela garde
 // exactement le même chemin pour le site, Telegram et la commande WhatsApp.
@@ -63,4 +93,4 @@ patch(
 
 check(sessionRel);
 check('public/js/app.js');
-console.log('[pairing-runtime] ✅ pairing multi-source simple + statut synchronisé');
+console.log('[pairing-runtime] ✅ pairing multi-source + commandes sous-sessions réparés');
