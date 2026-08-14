@@ -22,7 +22,7 @@ if (!src.includes('[BENIN GREETING SAFE]')) {
   replaceRegion(
     'function getGreeting() {',
     '// Heure formatée Bénin',
-    `function getGreeting() { // [BENIN GREETING SAFE]\n  let hour;\n  try {\n    const parts = new Intl.DateTimeFormat('en-GB', {\n      timeZone: 'Africa/Porto-Novo',\n      hour: '2-digit',\n      hourCycle: 'h23',\n    }).formatToParts(new Date());\n    hour = Number(parts.find(part => part.type === 'hour')?.value);\n  } catch (_) {\n    hour = (new Date().getUTCHours() + 1) % 24;\n  }\n  if (!Number.isFinite(hour)) hour = (new Date().getUTCHours() + 1) % 24;\n  if (hour >= 5  && hour < 12) return 'Bonjour 🌞';\n  if (hour >= 12 && hour < 17) return 'Bon après-midi ☀️';\n  if (hour >= 17 && hour < 21) return 'Bonsoir 🌙';\n  return 'Bonne nuit 🌌';\n}\n\n// Heure formatée Bénin`,
+    `function getGreeting() { // [BENIN GREETING SAFE]\n  let hour;\n  try {\n    const parts = new Intl.DateTimeFormat('en-GB', {\n      timeZone: 'Africa/Porto-Novo',\n      hour: '2-digit',\n      hourCycle: 'h23',\n    }).formatToParts(new Date());\n    hour = Number(parts.find(part => part.type === 'hour')?.value);\n  } catch (_) {\n    hour = (new Date().getUTCHours() + 1) % 24;\n  }\n  if (!Number.isFinite(hour)) hour = (new Date().getUTCHours() + 1) % 24;\n  if (hour >= 5  && hour < 12) return 'Bonjour 🌞';\n  if (hour >= 12 && hour < 17) return 'Bon après-midi ☀️';\n  if (hour >= 17 && hour < 21) return 'Bonsoir 🌙';\n  return 'Bonne nuit 🌌';\n}\n\n`,
     'salutation horaire'
   );
 }
@@ -31,7 +31,7 @@ if (!src.includes(MARKER)) {
   const anchor = '// ── Construire l\'en-tête immersif — 10 styles thématiques ─────';
   const pos = src.indexOf(anchor);
   if (pos < 0) throw new Error('[menu-ui] ancre buildImmersiveHeader absente');
-  const helpers = `// ${MARKER}\nfunction sanitizeDisplayName(value) {\n  const clean = String(value || '').replace(/\\s+/g, ' ').trim();\n  if (!clean) return '';\n  return clean.length > 32 ? clean.slice(0, 31) + '…' : clean;\n}\n\nfunction disciplineMenuText(text) {\n  return String(text || '').split('\\n').map(line => line.replace(/[ \\t]{2,}(?=[:»])/g, ' ')).join('\\n');\n}\n\n`;
+  const helpers = `// ${MARKER}\nfunction sanitizeDisplayName(value) {\n  const clean = String(value || '').replace(/\\s+/g, ' ').trim();\n  if (!clean) return '';\n  return clean.length > 32 ? clean.slice(0, 31) + '…' : clean;\n}\n\nfunction disciplineMenuText(text) {\n  return String(text || '').split('\\n').map(line =>\n    line.replace(/[ \\t]{2,}(?=[:»])/g, ' ')\n  ).join('\\n');\n}\n\n`;
   src = src.slice(0, pos) + helpers + src.slice(pos);
 }
 
@@ -68,14 +68,19 @@ src = src.replace(
   'let text = buildImmersiveHeader(style, senderJid, count, botName);',
   'let text = buildImmersiveHeader(style, senderJid, count, botName, displayName);'
 );
-src = src.replace(
-  '  return text;\n}\n\n// Détail d\'une catégorie',
-  '  return disciplineMenuText(text);\n}\n\n// Détail d\'une catégorie'
-);
+
+const overviewStart = src.indexOf('function buildCategoryOverview(');
+const overviewEnd = overviewStart < 0 ? -1 : src.indexOf('// Détail d\'une catégorie', overviewStart);
+if (overviewStart < 0 || overviewEnd < 0) throw new Error('[menu-ui] buildCategoryOverview introuvable');
+let overview = src.slice(overviewStart, overviewEnd);
+if (!overview.includes('return disciplineMenuText(text);')) {
+  overview = overview.replace(/return\s+text;\s*\}\s*$/, 'return disciplineMenuText(text);\n}\n\n');
+}
+src = src.slice(0, overviewStart) + overview + src.slice(overviewEnd);
 
 src = src.replace(
-  'entry.prefix, entry.categoryNames, entry.categories, entry.count, entry.senderJid\n    );',
-  'entry.prefix, entry.categoryNames, entry.categories, entry.count, entry.senderJid, entry.displayName || \'\'\n    );'
+  /entry\.prefix,\s*entry\.categoryNames,\s*entry\.categories,\s*entry\.count,\s*entry\.senderJid\s*\n\s*\);/,
+  "entry.prefix, entry.categoryNames, entry.categories, entry.count, entry.senderJid, entry.displayName || ''\n    );"
 );
 
 if (!src.includes('[MENU REAL DISPLAY NAME]')) {
@@ -88,13 +93,16 @@ if (!src.includes('[MENU REAL DISPLAY NAME]')) {
 }
 
 src = src.replace(
-  'buildCategoryOverview(styleActif, botName, ownerName, userRank, prefix, categoryNames, categories, count, rawSender);',
+  /buildCategoryOverview\(styleActif,\s*botName,\s*ownerName,\s*userRank,\s*prefix,\s*categoryNames,\s*categories,\s*count,\s*rawSender\);/,
   'buildCategoryOverview(styleActif, botName, ownerName, userRank, prefix, categoryNames, categories, count, rawSender, displayName);'
 );
-src = src.replace(
-  'categoryNames, categories, count, senderJid: rawSender,\n          currentCategory:',
-  'categoryNames, categories, count, senderJid: rawSender, displayName,\n          currentCategory:'
-);
+
+if (!/senderJid:\s*rawSender,\s*displayName/.test(src)) {
+  src = src.replace(
+    /categoryNames,\s*categories,\s*count,\s*senderJid:\s*rawSender,\s*\n\s*currentCategory:/,
+    'categoryNames, categories, count, senderJid: rawSender, displayName,\n          currentCategory:'
+  );
+}
 
 fs.writeFileSync(menuPath, src, 'utf8');
 
@@ -104,8 +112,9 @@ for (const marker of [
   MARKER,
   '[DISPLAY NAME NO LID]',
   '[MENU REAL DISPLAY NAME]',
-  'disciplineMenuText(text)',
+  'return disciplineMenuText(text);',
   'entry.displayName',
+  'senderJid: rawSender, displayName',
 ]) {
   if (!final.includes(marker)) throw new Error('[menu-ui] garde-fou absent: ' + marker);
 }
