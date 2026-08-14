@@ -22,74 +22,106 @@ for (const file of [menuPath, pingPath, reperePath, handlerPath, packagePath, he
 fs.copyFileSync(helperOverride, helperPath);
 console.log('[special-presentation] helper premium copié');
 
-function replaceOnce(src, search, replacement, label) {
-  const count = src.split(search).length - 1;
-  if (count === 0 && src.includes(replacement)) return src;
-  if (count !== 1) throw new Error(`[special-presentation] ${label}: attendu 1 occurrence, trouvé ${count}`);
-  return src.replace(search, replacement);
+function replaceRegexOnce(src, regex, replacement, label) {
+  const matches = src.match(regex);
+  const count = matches ? matches.length : 0;
+  if (count !== 1) {
+    throw new Error(`[special-presentation] ${label}: attendu 1 occurrence, trouvé ${count}`);
+  }
+  return src.replace(regex, replacement);
 }
 
-// ── Menu / Allmenu : utiliser la carte premium uniquement pour les vues racines.
+function injectAfterNearby(src, anchorRegex, targetRegex, addition, alreadyMarker, label, windowSize = 900) {
+  if (src.includes(alreadyMarker)) return src;
+  const anchor = src.search(anchorRegex);
+  if (anchor < 0) throw new Error(`[special-presentation] ${label}: ancre principale introuvable`);
+  const window = src.slice(anchor, anchor + windowSize);
+  const target = window.match(targetRegex);
+  if (!target || target.index == null) {
+    throw new Error(`[special-presentation] ${label}: propriété cible introuvable près de l'ancre`);
+  }
+  const insertAt = anchor + target.index + target[0].length;
+  return src.slice(0, insertAt) + addition + src.slice(insertAt);
+}
+
+// ── Menu / Allmenu : carte premium uniquement sur les vues racines.
 let menu = fs.readFileSync(menuPath, 'utf8');
+
 if (!menu.includes(MARKER)) {
-  menu = replaceOnce(
+  menu = replaceRegexOnce(
     menu,
-    "    imageBuffer: providedImageBuffer = null,\n  } = options;",
-    "    imageBuffer: providedImageBuffer = null,\n    specialPresentation = false,\n    commandName = '',\n  } = options; // [SPECIAL PREMIUM PRESENTATION]",
+    /imageBuffer:\s*providedImageBuffer\s*=\s*null,\s*\}\s*=\s*options;/,
+    "imageBuffer: providedImageBuffer = null,\n    specialPresentation = false,\n    commandName = '',\n  } = options; // [SPECIAL PREMIUM PRESENTATION]",
     'options sendStyledMenuMessage'
   );
-
-  const specialHookAnchor = "  const buildRelayNodes = () => {";
-  const specialHook = `  if (specialPresentation) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || 'special',\n    });\n  }\n\n`;
-  if (!menu.includes(specialHookAnchor)) throw new Error('[special-presentation] ancre buildRelayNodes absente');
-  menu = menu.replace(specialHookAnchor, specialHook + specialHookAnchor);
-
-  const initialNeedle = "      text: menuText,\n      style: styleActif,\n      imageUrl: imageUrl || null,\n      quoted: msg,\n      mentions: [rawSender],\n      withImage: true,";
-  const initialReplacement = initialNeedle + "\n      specialPresentation: true,\n      commandName: 'menu',";
-  menu = replaceOnce(menu, initialNeedle, initialReplacement, 'menu principal premium');
-
-  const allNeedle = "        text: chunks[i],\n        style: ctx.styleActif,\n        imageUrl: ctx.imageUrl || null,\n        quoted: i === 0 ? msg : null,\n        mentions: [rawSender],\n        withImage: i === 0,";
-  const allReplacement = allNeedle + "\n        specialPresentation: i === 0,\n        commandName: 'allmenu',";
-  menu = replaceOnce(menu, allNeedle, allReplacement, 'allmenu premium');
-
-  if (!menu.includes('module.exports.getImageBufferForStyle = getImageBufferForStyle;')) {
-    menu += "\nmodule.exports.getImageBufferForStyle = getImageBufferForStyle; // [SPECIAL STYLE THUMBNAIL EXPORT]\n";
-  }
-  fs.writeFileSync(menuPath, menu, 'utf8');
 }
 
-// ── Ping : même enveloppe, mais le panneau ping reste le contenu principal.
+if (!menu.includes("commandName: commandName || 'special'")) {
+  const hookAnchor = /\n\s*const buildRelayNodes\s*=\s*\(\)\s*=>\s*\{/;
+  const match = menu.match(hookAnchor);
+  if (!match || match.index == null) throw new Error('[special-presentation] ancre buildRelayNodes absente');
+  const hook = `\n  if (specialPresentation) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || 'special',\n    });\n  }\n`;
+  menu = menu.slice(0, match.index) + hook + menu.slice(match.index);
+}
+
+menu = injectAfterNearby(
+  menu,
+  /text:\s*menuText\s*,/,
+  /withImage:\s*true\s*,/,
+  "\n      specialPresentation: true,\n      commandName: 'menu',",
+  "commandName: 'menu'",
+  'menu principal premium'
+);
+
+menu = injectAfterNearby(
+  menu,
+  /text:\s*chunks\s*\[\s*i\s*\]\s*,/,
+  /withImage:\s*i\s*===\s*0\s*,/,
+  "\n        specialPresentation: i === 0,\n        commandName: 'allmenu',",
+  "commandName: 'allmenu'",
+  'allmenu premium'
+);
+
+if (!menu.includes('module.exports.getImageBufferForStyle = getImageBufferForStyle;')) {
+  menu += "\nmodule.exports.getImageBufferForStyle = getImageBufferForStyle; // [SPECIAL STYLE THUMBNAIL EXPORT]\n";
+}
+fs.writeFileSync(menuPath, menu, 'utf8');
+
+// ── Ping : même enveloppe premium, panneau système conservé.
 let ping = fs.readFileSync(pingPath, 'utf8');
 if (!ping.includes('[PING SPECIAL PREMIUM PRESENTATION]')) {
-  const pingNeedle = "          quoted: from?.endsWith('@g.us') ? msg : null,\n          mentions: [],\n          withImage: false,";
-  const pingReplacement = "          quoted: from?.endsWith('@g.us') ? msg : null,\n          mentions: [],\n          withImage: true,\n          specialPresentation: true, // [PING SPECIAL PREMIUM PRESENTATION]\n          commandName: 'ping',";
-  ping = replaceOnce(ping, pingNeedle, pingReplacement, 'ping premium');
+  ping = replaceRegexOnce(
+    ping,
+    /withImage:\s*false\s*,/,
+    "withImage: true,\n          specialPresentation: true, // [PING SPECIAL PREMIUM PRESENTATION]\n          commandName: 'ping',",
+    'ping premium'
+  );
   fs.writeFileSync(pingPath, ping, 'utf8');
 }
 
-// ── Repère : conserve son contenu, ses 3 CTA et sa newsletter, mais utilise
-// la miniature du style actif et la carte THE BIG DIPPER commune.
+// ── Repère : contenu conservé, carte commune + miniature du style actif.
 let repere = fs.readFileSync(reperePath, 'utf8');
 if (!repere.includes('[REPERE SPECIAL PREMIUM PRESENTATION]')) {
-  const configImport = "const config = require('../../config');";
-  repere = replaceOnce(
+  repere = replaceRegexOnce(
     repere,
-    configImport,
-    configImport + "\nconst styleManager = require('../../utils/styleManager');\nconst { sendSpecialPresentation } = require('../../utils/specialPresentation'); // [REPERE SPECIAL PREMIUM PRESENTATION]",
+    /const config = require\('\.\.\/\.\.\/config'\);/,
+    "const config = require('../../config');\nconst styleManager = require('../../utils/styleManager');\nconst { sendSpecialPresentation } = require('../../utils/specialPresentation'); // [REPERE SPECIAL PREMIUM PRESENTATION]",
     'imports repere premium'
   );
 
-  const callNeedle = "      await sendInteractiveRepere(sock, from, caption, imageBuffer, quoted);";
-  const callReplacement = `      const activeStyle = styleManager.getStyle();\n      let styleImage = null;\n      try {\n        const menu = require('../general_tools/menu');\n        if (typeof menu.getImageBufferForStyle === 'function') {\n          styleImage = await menu.getImageBufferForStyle(activeStyle);\n        }\n      } catch (_) {}\n      await sendSpecialPresentation(sock, from, {\n        text: caption,\n        style: activeStyle,\n        imageBuffer: styleImage || imageBuffer || null,\n        commandName: 'repere',\n      });`;
-  repere = replaceOnce(repere, callNeedle, callReplacement, 'envoi repere premium');
+  repere = replaceRegexOnce(
+    repere,
+    /\s*await sendInteractiveRepere\(sock, from, caption, imageBuffer, quoted\);/,
+    `\n      const activeStyle = styleManager.getStyle();\n      let styleImage = null;\n      try {\n        const menu = require('../general_tools/menu');\n        if (typeof menu.getImageBufferForStyle === 'function') {\n          styleImage = await menu.getImageBufferForStyle(activeStyle);\n        }\n      } catch (_) {}\n      await sendSpecialPresentation(sock, from, {\n        text: caption,\n        style: activeStyle,\n        imageBuffer: styleImage || imageBuffer || null,\n        commandName: 'repere',\n      });`,
+    'envoi repere premium'
+  );
   fs.writeFileSync(reperePath, repere, 'utf8');
 }
 
-// ── Autres commandes spéciales : interception centrale des réponses texte.
-// Seules les commandes du registre specialPresentation.js sont concernées.
+// ── Autres commandes spéciales : interception centrale de leurs réponses texte.
 let handler = fs.readFileSync(handlerPath, 'utf8');
 if (!handler.includes('[GENERIC SPECIAL COMMAND PRESENTATION]')) {
-  const disciplinedAnchor = "    const disciplinedPayload = decoratePayload(payload);";
+  const disciplinedAnchor = '    const disciplinedPayload = decoratePayload(payload);';
   if (!handler.includes(disciplinedAnchor)) {
     throw new Error('[special-presentation] handler final sans decoratePayload; exécuter response-style/global-footer avant');
   }
@@ -116,13 +148,16 @@ if (!prestart.includes('../special-presentation-patch.js')) {
 
 for (const file of [helperPath, menuPath, pingPath, reperePath, handlerPath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
-  if (check.status !== 0) throw new Error(`[special-presentation] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
+  if (check.status !== 0) {
+    throw new Error(`[special-presentation] syntaxe invalide ${path.relative(BOT, file)}: ${check.stderr || check.stdout}`);
+  }
 }
 
 const finalMenu = fs.readFileSync(menuPath, 'utf8');
 const finalPing = fs.readFileSync(pingPath, 'utf8');
 const finalRepere = fs.readFileSync(reperePath, 'utf8');
 const finalHandler = fs.readFileSync(handlerPath, 'utf8');
+
 for (const required of [
   '[SPECIAL PREMIUM PRESENTATION]',
   "commandName: 'menu'",
