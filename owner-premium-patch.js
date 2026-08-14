@@ -23,29 +23,35 @@ if (check.status !== 0) {
 const final = fs.readFileSync(target, 'utf8');
 for (const marker of [
   "name: 'owner'",
-  "'2290146202259'",
-  "'2290155745907'",
-  "https://t.me/tresor20009",
-  "https://www.facebook.com/profile.php?id=100078681750878",
-  "https://www.tiktok.com/@tresor20001",
-  "https://www.instagram.com/tresorhtn",
-  "https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07",
-  "forwardedNewsletterMessageInfo",
-  "💬 Message",
-  "✈️ Telegram",
-  "📘 Facebook",
-  "🎵 TikTok",
-  "📸 Instagram",
-  "📢 Nexus Tech",
-  "> Powered by 🌹 Mr Tresor 🌹",
+  "OWNER_PHONE = '2290146202259'",
+  "OWNER_NAME = '𝐌ꝛ⥔𝕿𝖗𝖊𝖘𝖔𝖗 🌹'",
+  "TEL;type=CELL;type=VOICE;waid=${OWNER_PHONE}:+${OWNER_PHONE}",
+  'ARRIVÉE DU CRÉATEUR',
+  'soumission totale',
+  'resolveOwnerProfileThumbnail',
+  'await wait(2200)',
+  'forwardedNewsletterMessageInfo',
+  'https://t.me/tresor20009',
+  'https://www.facebook.com/profile.php?id=100078681750878',
+  'https://www.tiktok.com/@tresor20001',
+  'https://www.instagram.com/tresorhtn',
+  'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07',
+  '💬 Message',
+  '✈️ Telegram',
+  '📘 Facebook',
+  '🎵 TikTok',
+  '📸 Instagram',
+  '📢 Nexus Tech',
+  '> Powered by 🌹 Mr Tresor 🌹',
 ]) {
   if (!final.includes(marker)) throw new Error(`[owner-premium] garde-fou absent: ${marker}`);
 }
 
-// Compte uniquement les appels réels urlButton('...') dans buildButtons().
-// La déclaration `function urlButton(...)` ne matche pas ce motif, donc
-// il ne faut rien soustraire ici.
-const buttonCount = (final.match(/urlButton\('/g) || []).length;
-if (buttonCount !== 6) throw new Error(`[owner-premium] 6 CTA attendus par contact, trouvé ${buttonCount}`);
+if (final.includes('2290155745907')) {
+  throw new Error('[owner-premium] ancien second numéro encore présent');
+}
 
-console.log('[owner-premium] ✅ .owner = 2 vCards + newsletter + 6 CTA vérifiés par contact');
+const buttonCount = (final.match(/urlButton\('/g) || []).length;
+if (buttonCount !== 6) throw new Error(`[owner-premium] 6 CTA attendus, trouvé ${buttonCount}`);
+
+console.log('[owner-premium] ✅ .owner = annonce + 1 vCard créateur + photo + 6 CTA');
