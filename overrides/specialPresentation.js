@@ -19,10 +19,15 @@ const SUPPORT_GROUP_URL = 'https://chat.whatsapp.com/Dm7yX11U7vmCCFM240sNKq?s=cl
 // Le registre est volontairement central : ajouter un nom ici suffit pour que
 // les réponses texte de cette commande reçoivent la même enveloppe premium.
 const SPECIAL_COMMANDS = new Set([
+  // Navigation / découverte
   'menu', 'grimoire', 'allmenu', 'commands', 'index', 'menu2', 'help',
-  'ping', 'alive', 'uptime', 'botinfo', 'info', 'status',
-  'repere', 'repère', 'owner', 'support', 'freebot', 'about',
-  'pair', 'sessions', 'session', 'setprefix', 'setmode',
+  // État / identité du bot
+  'ping', 'alive', 'uptime', 'botinfo', 'botstatus', 'info', 'status', 'presence',
+  // Identité / communauté
+  'repere', 'repère', 'owner', 'support', 'freebot', 'about', 'channelid',
+  // Sessions / configuration importante
+  'pair', 'sessions', 'session', 'mode', 'prefix', 'setprefix', 'setmode',
+  'setbotname', 'setmenuimage', 'setnewsletter', 'update',
 ]);
 
 function normalizeCommandName(name) {
@@ -38,7 +43,7 @@ function buildOwnerVcard() {
     'BEGIN:VCARD',
     'VERSION:3.0',
     `FN:${OWNER_NAME}`,
-    `N:Tresor;Mr;;;`,
+    'N:Tresor;Mr;;;',
     `TEL;type=CELL;type=VOICE;waid=${OWNER_PHONE}:+${OWNER_PHONE}`,
     `URL:https://wa.me/${OWNER_PHONE}`,
     'END:VCARD',
