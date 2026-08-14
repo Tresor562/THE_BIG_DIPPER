@@ -10,7 +10,8 @@ const styleManagerPath = path.join(ROOT, 'utils', 'styleManager.js');
 const menuPath = path.join(ROOT, 'commands', 'general_tools', 'menu.js');
 const handlerPath = path.join(ROOT, 'handler.js');
 const packagePath = path.join(ROOT, 'package.json');
-const FOOTER = '>Powered by 🌹 Mr Tresor 🌹';
+const LEGACY_FOOTER = '>Powered by 🌹 Mr Tresor 🌹';
+const FOOTER = '> Powered by 🌹 Mr Tresor 🌹';
 const MARKER = '[GLOBAL QUOTED FOOTER — MR TRESOR]';
 
 for (const file of [responseStylePath, styleManagerPath, menuPath, handlerPath, packagePath]) {
@@ -49,8 +50,10 @@ if (!rs.includes(MARKER)) {
     `  decoratePayload,\n};`,
     `  decoratePayload,\n  ensureGlobalFooter,\n  decorateRelayMessage,\n  GLOBAL_FOOTER,\n};`
   );
-  fs.writeFileSync(responseStylePath, rs, 'utf8');
 }
+// Migration forcée des installations déjà patchées avec l'ancienne forme sans espace.
+rs = rs.split(LEGACY_FOOTER).join(FOOTER);
+fs.writeFileSync(responseStylePath, rs, 'utf8');
 
 let sm = fs.readFileSync(styleManagerPath, 'utf8');
 if (!sm.includes(MARKER)) {
@@ -61,10 +64,12 @@ if (!sm.includes(MARKER)) {
   const returnNew = `  const persona = PERSONAS[s] || PERSONAS[0];\n  return { ...persona, footer: () => GLOBAL_FOOTER };`;
   if (!sm.includes(returnOld)) throw new Error('[global-footer] retour getPhrases introuvable');
   sm = sm.replace(returnOld, returnNew);
-  fs.writeFileSync(styleManagerPath, sm, 'utf8');
 }
+sm = sm.split(LEGACY_FOOTER).join(FOOTER);
+fs.writeFileSync(styleManagerPath, sm, 'utf8');
 
 let menu = fs.readFileSync(menuPath, 'utf8');
+menu = menu.split(LEGACY_FOOTER).join(FOOTER);
 menu = menu.replace(/footer:\s*\(\)\s*=>\s*`[^`]*`,/g, `footer: () => \`${FOOTER}\`,`);
 menu = menu.replace(/const SIGNATURE = [^;]+;/, `const SIGNATURE = '\\n${FOOTER}'; // ${MARKER}`);
 fs.writeFileSync(menuPath, menu, 'utf8');
@@ -89,8 +94,6 @@ if (!prestart.includes('../global-footer-patch.js')) {
   pkg.scripts = pkg.scripts || {};
   const verifier = 'node scripts/verify-command-runtime.js';
   const special = 'node ../special-presentation-patch.js';
-
-  // Si le shell premium s'est déjà inscrit, on place le footer juste AVANT lui.
   if (prestart.includes(special)) {
     prestart = prestart.replace(special, `node ../global-footer-patch.js && ${special}`);
   } else if (prestart.includes(verifier)) {
