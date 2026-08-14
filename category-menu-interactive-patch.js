@@ -63,6 +63,9 @@ console.log('[category-interactive] ✅ menus de catégories = style + newslette
 
 require('./unknown-command-visual-patch');
 require('./unknown-command-compact-patch');
+
+// Photo créateur embarquée avant que le shell premium soit copié dans bot/utils.
+require('./owner-profile-image-patch');
 require('./special-presentation-patch');
 require('./premium-runtime-verifier-patch');
 
