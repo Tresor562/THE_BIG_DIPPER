@@ -63,3 +63,7 @@ for (const marker of [
 }
 
 console.log('[category-interactive] ✅ menus de catégories = style + newsletter + CTA');
+
+// La correction floue des commandes doit utiliser exactement le même moteur
+// visuel que les menus de catégories : style actif + newsletter + CTA.
+require('./unknown-command-visual-patch');
