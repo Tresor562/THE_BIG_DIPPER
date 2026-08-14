@@ -68,3 +68,7 @@ require('./unknown-command-compact-patch');
 // Enveloppe premium réservée aux commandes spéciales : menu/allmenu/ping/repere
 // + registre central des autres commandes d'identité/navigation/système.
 require('./special-presentation-patch');
+
+// Le ping premium utilise l'image du style actif : le vérificateur legacy
+// doit accepter withImage:true lorsqu'il voit le marqueur premium.
+require('./premium-runtime-verifier-patch');
