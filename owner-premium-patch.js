@@ -42,7 +42,10 @@ for (const marker of [
   if (!final.includes(marker)) throw new Error(`[owner-premium] garde-fou absent: ${marker}`);
 }
 
-const buttonCount = (final.match(/urlButton\('/g) || []).length - 1; // retire la déclaration de fonction
+// Compte uniquement les appels réels urlButton('...') dans buildButtons().
+// La déclaration `function urlButton(...)` ne matche pas ce motif, donc
+// il ne faut rien soustraire ici.
+const buttonCount = (final.match(/urlButton\('/g) || []).length;
 if (buttonCount !== 6) throw new Error(`[owner-premium] 6 CTA attendus par contact, trouvé ${buttonCount}`);
 
 console.log('[owner-premium] ✅ .owner = 2 vCards + newsletter + 6 CTA vérifiés par contact');
