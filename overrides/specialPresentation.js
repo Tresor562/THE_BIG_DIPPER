@@ -32,6 +32,13 @@ const SPECIAL_COMMANDS = new Set([
 const normalizeCommandName = name => String(name || '').trim().toLowerCase();
 const isSpecialCommand = name => SPECIAL_COMMANDS.has(normalizeCommandName(name));
 
+function disciplineSpecialText(text) {
+  return String(text || '')
+    .split('\n')
+    .map(line => line.replace(/[ \t]{2,}(?=[:»])/g, ' '))
+    .join('\n');
+}
+
 function buildOwnerVcard() {
   return ['BEGIN:VCARD','VERSION:3.0',`FN:${OWNER_NAME}`,'N:Tresor;Mr;;;',`TEL;type=CELL;type=VOICE;waid=${OWNER_PHONE}:+${OWNER_PHONE}`,`URL:https://wa.me/${OWNER_PHONE}`,'END:VCARD'].join('\n');
 }
@@ -114,7 +121,6 @@ async function resolveOwnerProfileThumbnail(sock) {
     console.warn('[special-presentation] photo owner distante indisponible:', err.message);
   }
 
-  // Fallback garanti : miniature embarquée depuis la 2e image fournie.
   if (!Buffer.isBuffer(buffer) || buffer.length < 256) {
     try {
       const embedded = require('./ownerProfileImage');
@@ -168,7 +174,7 @@ async function sendSpecialPresentation(sock, jid, options = {}) {
   const ownerThumbnail = await resolveOwnerProfileThumbnail(sock);
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
-    body: proto.Message.InteractiveMessage.Body.create({ text: String(text || '') }),
+    body: proto.Message.InteractiveMessage.Body.create({ text: disciplineSpecialText(text) }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header,
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({ buttons: buildButtons(), messageParamsJson: '{}', messageVersion: 1 }),
