@@ -76,6 +76,16 @@ for (const file of files) {
     write(file, src);
     changed.add(file);
   }
+
+  // Variante historique où la décision était stockée dans isMaster sans
+  // consulter le contexte déjà authentifié par le handler.
+  src = read(file);
+  const oldMaster = 'const isMaster = supremeOwners.includes(senderNumber);';
+  if (src.includes(oldMaster)) {
+    src = src.replace(oldMaster, "const isMaster = supremeOwners.includes(senderNumber) || extra?.isOwner === true || extra?.isSupremeOwner === true || msg?.key?.fromMe === true;");
+    write(file, src);
+    changed.add(file);
+  }
 }
 
 // 2) inspect.js : l'ancien code reconstruisait un @s.whatsapp.net depuis
@@ -113,45 +123,81 @@ for (const file of files) {
   }
 }
 
-// Vérification 1 après application.
-for (const file of changed) checkSyntax(file);
-const after1 = auditSnapshot('verification 1');
-if (after1.legacyStrictGate.length) {
-  throw new Error('[owner-command-audit] garde owner historique non corrigé: ' + after1.legacyStrictGate.join(', '));
-}
+function assertPostPatch(label) {
+  for (const file of changed) checkSyntax(file);
+  const after = auditSnapshot(label);
+  if (after.legacyStrictGate.length) {
+    throw new Error('[owner-command-audit] garde owner historique non corrigé: ' + after.legacyStrictGate.join(', '));
+  }
 
-let handler = read(HANDLER);
-for (const invariant of [
-  'const isMe      = isSuperMe || isOwner(sender) || msg.key.fromMe || _isSessionOwner;',
-  'isOwner:        isMe,',
-  '[PRIVATE QUOTED DELIVERY GUARD]',
-]) {
-  if (!handler.includes(invariant)) throw new Error('[owner-command-audit] invariant handler absent: ' + invariant);
-}
+  const handler = read(HANDLER);
+  for (const invariant of [
+    'const isMe      = isSuperMe || isOwner(sender) || msg.key.fromMe || _isSessionOwner;',
+    'isOwner:        isMe,',
+    '[PRIVATE QUOTED DELIVERY GUARD]',
+  ]) {
+    if (!handler.includes(invariant)) throw new Error('[owner-command-audit] invariant handler absent: ' + invariant);
+  }
 
-const saveFile = path.join(COMMANDS, 'owner_control', 'save.js');
-if (fs.existsSync(saveFile)) {
-  const save = read(saveFile);
-  if (!save.includes("extra?.isOwner !== true") && !/\bisOwner\b/.test(save)) {
-    throw new Error('[owner-command-audit] save.js ne reconnaît toujours pas le connected owner');
+  const saveFile = path.join(COMMANDS, 'owner_control', 'save.js');
+  if (fs.existsSync(saveFile)) {
+    const save = read(saveFile);
+    if (!save.includes('extra?.isOwner') && !/\bisOwner\b/.test(save)) {
+      throw new Error('[owner-command-audit] save.js ne reconnaît toujours pas le connected owner');
+    }
+  }
+
+  const inspectFile = path.join(COMMANDS, 'owner_control', 'inspect.js');
+  if (fs.existsSync(inspectFile)) {
+    const inspect = read(inspectFile);
+    if (inspect.includes('sock.sendMessage(`${senderNumber}@s.whatsapp.net`')) {
+      throw new Error('[owner-command-audit] inspect.js reconstruit encore un faux DM owner');
+    }
   }
 }
 
-const inspectFile = path.join(COMMANDS, 'owner_control', 'inspect.js');
-if (fs.existsSync(inspectFile)) {
-  const inspect = read(inspectFile);
-  if (inspect.includes('sock.sendMessage(`${senderNumber}@s.whatsapp.net`')) {
-    throw new Error('[owner-command-audit] inspect.js reconstruit encore un faux DM owner');
-  }
+function runOwnerSmoke(label) {
+  const code = `
+    const path = require('path');
+    const root = ${JSON.stringify(BOT)};
+    const baseExtra = {
+      isOwner: true,
+      isSupremeOwner: false,
+      sender: '188055763857491@lid',
+      from: '22900000000@s.whatsapp.net',
+      phrases: { footer: () => '' },
+      toSmallCaps: x => String(x),
+    };
+    const msg = { key: { fromMe: true, remoteJid: baseExtra.from }, message: { conversation: '.noop' } };
+    const sock = { user: { id: '188055763857491:1@lid' }, sendMessage: async () => ({ key: { id: 'mock' } }) };
+    async function mustReply(file, body) {
+      const cmd = require(path.join(root, 'commands', 'owner_control', file));
+      const replies = [];
+      const m = { ...msg, message: { conversation: body } };
+      const extra = { ...baseExtra, reply: async text => { replies.push(String(text)); return { key: { id: 'reply' } }; } };
+      await cmd.execute(sock, m, [], extra);
+      if (!replies.length) throw new Error(file + ' a ignoré le connected owner');
+    }
+    (async () => {
+      await mustReply('save.js', '.save');
+      await mustReply('inspect.js', '.inspect');
+      await mustReply('reload.js', '.reload');
+      await mustReply('blacklist.js', '.blacklist');
+      await mustReply('ghostfile.js', '.cat');
+      await mustReply('master.js', '.js');
+      console.log('owner-smoke-ok');
+    })().catch(err => { console.error(err.stack || err.message); process.exit(1); });
+  `;
+  const r = spawnSync(process.execPath, ['-e', code], { cwd: BOT, encoding: 'utf8', timeout: 15000 });
+  if (r.status !== 0) throw new Error(`[owner-command-audit] ${label} smoke: ${r.stderr || r.stdout}`);
+  if (!String(r.stdout).includes('owner-smoke-ok')) throw new Error(`[owner-command-audit] ${label} smoke sans confirmation`);
+  console.log(`[owner-command-audit] ${label}: smoke owner-control OK`);
 }
 
-// Vérification 2 indépendante : relire depuis disque, rechecker toutes les
-// commandes modifiées et refaire les invariants afin de détecter une écriture
-// partielle ou un patch non idempotent.
-for (const file of [...changed]) checkSyntax(file);
-const after2 = auditSnapshot('verification 2');
-if (after2.legacyStrictGate.length) throw new Error('[owner-command-audit] régression garde owner après seconde lecture');
-handler = read(HANDLER);
-if (!handler.includes('[PRIVATE QUOTED DELIVERY GUARD]')) throw new Error('[owner-command-audit] garde livraison privé perdu');
+// Double vérification après application : statique + exécution sans effet de bord.
+assertPostPatch('verification 1');
+runOwnerSmoke('test 1');
+assertPostPatch('verification 2');
+runOwnerSmoke('test 2');
 
-console.log(`[owner-command-audit] ✅ ${files.length} commandes auditées; ${changed.size} fichiers concernés corrigés; double vérification OK`);
+console.log(`[owner-command-audit] ✅ ${files.length} commandes auditées; ${changed.size} fichiers concernés corrigés; double audit + double test OK`);
