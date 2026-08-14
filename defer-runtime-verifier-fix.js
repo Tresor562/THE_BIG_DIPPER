@@ -11,3 +11,7 @@ if (fs.existsSync(installer)) {
     console.log('[defer-verifier] hook prématuré retiré de l’installer');
   }
 }
+
+// Installer tôt les fonctionnalités de groupe. Le script est idempotent et
+// sera rejoué au prestart afin que les overrides survivent aux redémarrages.
+require('./group-engagement-patch');
