@@ -18,6 +18,8 @@ const DEFAULT_STYLE_IMAGE = 'https://files.catbox.moe/1k8r1f.jpg';
 const NEXUS_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbDkWGYHltYHGr1HHQ07';
 const OTAKU_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbCKhnq7j6gEhuUKMP1V';
 const SUPPORT_GROUP_URL = 'https://chat.whatsapp.com/Dm7yX11U7vmCCFM240sNKq?s=cl&p=a&ilr=1';
+const PROFILE_CACHE_MS = 30 * 60 * 1000;
+const ownerProfileCache = new WeakMap();
 
 const SPECIAL_COMMANDS = new Set([
   'menu', 'grimoire', 'allmenu', 'commands', 'index', 'menu2', 'help',
@@ -80,18 +82,66 @@ async function resolveImageBuffer(style, provided) {
 
 async function makePreviewThumbnail(imageBuffer) {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length < 256) return null;
-  try { return await sharp(imageBuffer).resize(320, 320, { fit: 'cover', position: 'centre', withoutEnlargement: true }).jpeg({ quality: 72, mozjpeg: true }).toBuffer(); }
-  catch (_) { return imageBuffer.length <= 120 * 1024 ? imageBuffer : null; }
+  try {
+    return await sharp(imageBuffer)
+      .resize(320, 320, { fit: 'cover', position: 'centre', withoutEnlargement: true })
+      .jpeg({ quality: 76, mozjpeg: true })
+      .toBuffer();
+  } catch (_) {
+    return imageBuffer.length <= 120 * 1024 ? imageBuffer : null;
+  }
 }
 
-function getNewsletterContext(thumbnail) {
+// La grande image reste celle du style actif. La petite vignette de la carte
+// THE BIG DIPPER est, elle, la photo de profil WhatsApp du créateur.
+async function resolveOwnerProfileThumbnail(sock) {
+  if (!sock || typeof sock !== 'object') return null;
+  const cached = ownerProfileCache.get(sock);
+  if (cached && Date.now() - cached.ts < PROFILE_CACHE_MS) return cached.buffer;
+
+  let buffer = null;
+  try {
+    if (typeof sock.profilePictureUrl === 'function') {
+      const url = await sock.profilePictureUrl(`${OWNER_PHONE}@s.whatsapp.net`, 'image');
+      if (url) {
+        const res = await axios.get(url, {
+          responseType: 'arraybuffer', timeout: 7000,
+          headers: { 'User-Agent': 'Mozilla/5.0 THE-BIG-DIPPER' },
+        });
+        const raw = Buffer.from(res.data || []);
+        if (raw.length > 256) buffer = await makePreviewThumbnail(raw);
+      }
+    }
+  } catch (err) {
+    console.warn('[special-presentation] photo owner indisponible:', err.message);
+  }
+
+  ownerProfileCache.set(sock, { ts: Date.now(), buffer });
+  return buffer;
+}
+
+function getNewsletterContext(ownerThumbnail) {
   const contextInfo = {
     forwardingScore: 999,
     isForwarded: true,
-    forwardedNewsletterMessageInfo: { newsletterJid: config.newsletterJid || '120363411005383995@newsletter', newsletterName: config.botName || BOT_TITLE, serverMessageId: -1 },
-    externalAdReply: { showAdAttribution: false, title: BOT_TITLE, body: 'Powered by 🌹 Mr Tresor 🌹', mediaType: 1, sourceUrl: BOT_URL, mediaUrl: BOT_URL, renderLargerThumbnail: true },
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: config.newsletterJid || '120363411005383995@newsletter',
+      newsletterName: config.botName || BOT_TITLE,
+      serverMessageId: -1,
+    },
+    externalAdReply: {
+      showAdAttribution: false,
+      title: BOT_TITLE,
+      body: 'Powered by 🌹 Mr Tresor 🌹',
+      mediaType: 1,
+      sourceUrl: BOT_URL,
+      mediaUrl: BOT_URL,
+      renderLargerThumbnail: false,
+    },
   };
-  if (Buffer.isBuffer(thumbnail) && thumbnail.length > 1000) contextInfo.externalAdReply.thumbnail = thumbnail;
+  if (Buffer.isBuffer(ownerThumbnail) && ownerThumbnail.length > 1000) {
+    contextInfo.externalAdReply.thumbnail = ownerThumbnail;
+  }
   return contextInfo;
 }
 
@@ -109,22 +159,38 @@ async function buildMediaHeader(sock, imageBuffer) {
 
 async function sendSpecialPresentation(sock, jid, options = {}) {
   const { text = '', style = styleManager.getStyle(), imageBuffer = null, commandName = '' } = options;
+
+  // Grande image = style actif (menu/ping/repere).
   const effectiveImage = await resolveImageBuffer(style, imageBuffer);
-  const thumbnail = await makePreviewThumbnail(effectiveImage);
   const header = await buildMediaHeader(sock, effectiveImage);
+
+  // Petite image au-dessus = photo du créateur.
+  const ownerThumbnail = await resolveOwnerProfileThumbnail(sock);
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: String(text || '') }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: '' }),
     header,
-    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({ buttons: buildButtons(), messageParamsJson: '{}', messageVersion: 1 }),
-    contextInfo: getNewsletterContext(thumbnail),
+    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+      buttons: buildButtons(), messageParamsJson: '{}', messageVersion: 1,
+    }),
+    contextInfo: getNewsletterContext(ownerThumbnail),
   });
 
-  const generated = generateWAMessageFromContent(jid, { interactiveMessage }, { quoted: buildOwnerQuotedMessage(jid), userJid: sock.user?.id });
-  await sock.relayMessage(jid, generated.message, { messageId: generated.key.id, additionalNodes: buildBizNodes(jid) });
-  console.log(`[special-presentation] ✅ ${normalizeCommandName(commandName) || 'special'} | style=${style} | image=${header?.hasMediaAttachment ? 'yes' : 'no'} | jid=${jid}`);
+  const generated = generateWAMessageFromContent(
+    jid,
+    { interactiveMessage },
+    { quoted: buildOwnerQuotedMessage(jid), userJid: sock.user?.id }
+  );
+  await sock.relayMessage(jid, generated.message, {
+    messageId: generated.key.id,
+    additionalNodes: buildBizNodes(jid),
+  });
+  console.log(`[special-presentation] ✅ ${normalizeCommandName(commandName) || 'special'} | style=${style} | image=${header?.hasMediaAttachment ? 'yes' : 'no'} | ownerThumb=${ownerThumbnail ? 'yes' : 'no'} | jid=${jid}`);
   return generated;
 }
 
-module.exports = { OWNER_PHONE, OWNER_NAME, BOT_TITLE, BOT_URL, SPECIAL_COMMANDS, isSpecialCommand, sendSpecialPresentation };
+module.exports = {
+  OWNER_PHONE, OWNER_NAME, BOT_TITLE, BOT_URL, SPECIAL_COMMANDS,
+  isSpecialCommand, sendSpecialPresentation, resolveOwnerProfileThumbnail,
+};
