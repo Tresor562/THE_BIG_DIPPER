@@ -38,31 +38,25 @@ if (style0Start === -1 || style1Start === -1) {
 
 const style0Block = `  0: {
     nom: 'DIPPER',
-    // L'en-tête complet est déjà produit par buildImmersiveHeader().
+    // L'en-tête compact est déjà produit par buildImmersiveHeader().
     header: () => '',
     catOpen: cat => \`╭─❑ *\${String(cat).toUpperCase()}* ❑─⚯\\n\`,
     catCmd: cmd => \`┃⌥⎋ \\\`\${cmd.name}\\\`\\n\`,
     catClose: () => \`╰━━━━━━━━━━━━━━━⚯\\n\\n\`,
-    footer: () => \`> 𝐏𝐎𝐖𝐄𝐑𝐄𝐃 𝐁𝐘 𝐓𝐇𝐄 𝐁𝐈𝐆 𝐃𝐈𝐏𝐏𝐄𝐑\`,
+    footer: () => \`> Powered by 🌹 Mr Tresor 🌹\`,
   },
 `;
 src = src.slice(0, style0Start) + style0Block + src.slice(style1Start);
 console.log('[style0-sarada] STYLES[0] remplacé');
 
 // ── 2) En-tête immersif Style 0 ─────────────────────────────────────
+// IMPORTANT : aucune information système ici. Ce renderer est partagé par
+// .menu, .allmenu, les catégories et la navigation par réponse. Les métriques
+// host/CPU/RAM/latence/uptime appartiennent uniquement à .ping.
 const immersiveStart = '  // ── Style 0 · DIPPER (identité officielle) ──────────────────';
 const immersiveEnd = '  // ── Style 1 · Dark ─────────────────────────────────────────';
-const immersiveBlock = `  // ── Style 0 · DIPPER — panneau système Sarada-inspired ───────
+const immersiveBlock = `  // ── Style 0 · DIPPER — identité compacte, sans métriques système ──
   if (style === 0) {
-    const osInfo = require('os');
-    const totalRam = osInfo.totalmem();
-    const usedRam = totalRam - osInfo.freemem();
-    const ramUsedGb = (usedRam / 1024 ** 3).toFixed(1);
-    const ramTotalGb = (totalRam / 1024 ** 3).toFixed(1);
-    const memoryMb = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
-    const cpuLoad = Number(osInfo.loadavg?.()[0] || 0).toFixed(2);
-    const host = osInfo.hostname() || process.env.HOSTNAME || 'N/A';
-    const serverId = process.env.RENDER_INSTANCE_ID || process.env.RENDER_SERVICE_ID || 'N/A';
     const mode = config.selfMode ? 'self' : (config.public ? 'public' : 'semi-public');
 
     return (
@@ -72,25 +66,16 @@ const immersiveBlock = `  // ── Style 0 · DIPPER — panneau système Sarad
       \`┃𓊈⭐𓊉 *𝐎𝐖𝐍𝐄𝐑* : \${owner}\\n\` +
       \`┃𓊈⭐𓊉 *𝐕𝐄𝐑𝐒𝐈𝐎𝐍* : *\${ver}*\\n\` +
       \`┃𓊈⭐𓊉 *𝐂𝐌𝐃𝐒* : \${count}\\n\` +
-      \`╰━━━━━━━━━━━━━━━⚯\\n\\n\` +
-      \`╭─❑ *𝐈𝐍𝐅𝐎𝐒 𝐒𝐘𝐒𝐓𝐄̀𝐌𝐄* ❑─⚯\\n\` +
-      \`┃☍╭⚬𝐋𝐚𝐭𝐞𝐧𝐜𝐲: \${getLatency()}ms\\n\` +
-      \`┃☍│⚬𝐇𝐨𝐬𝐭: \${host}\\n\` +
-      \`┃☍│⚬𝐈𝐃 𝐬𝐞𝐫𝐯𝐞𝐫: \${serverId}\\n\` +
-      \`┃☍│⚬𝐂𝐩𝐮 𝐥𝐨𝐚𝐝: \${cpuLoad}\\n\` +
-      \`┃☍│⚬𝐑𝐚𝐦: \${ramUsedGb} Go / \${ramTotalGb} Go\\n\` +
-      \`┃☍│⚬𝐌𝐞𝐦𝐨𝐫𝐲: \${memoryMb} Mo\\n\` +
-      \`┃☍╰⚬𝐔𝐩𝐭𝐢𝐦𝐞: \${uptime}\\n\` +
       \`╰━━━━━━━━━━━━━━━⚯\\n\\n\`
     );
   }
 
 `;
-replaceBetween(immersiveStart, immersiveEnd, immersiveBlock, 'en-tête immersif style 0');
+replaceBetween(immersiveStart, immersiveEnd, immersiveBlock, 'en-tête immersif style 0 compact');
 
 fs.writeFileSync(menuPath, src, 'utf8');
 fs.copyFileSync(pingOverride, pingPath);
-console.log('[style0-sarada] ping style 0 installé');
+console.log('[style0-sarada] ping style 0 installé — métriques système réservées à ping');
 
 for (const file of [menuPath, pingPath]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
@@ -99,4 +84,4 @@ for (const file of [menuPath, pingPath]) {
   }
 }
 
-console.log('[style0-sarada] ✅ style 0 menu + ping prêts');
+console.log('[style0-sarada] ✅ style 0 menu compact + ping système prêts');
