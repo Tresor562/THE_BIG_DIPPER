@@ -62,48 +62,18 @@ function chooseReactionEmoji(text, rawMessage) {
   const m = unwrapMessage(rawMessage);
 
   const rules = [
-    {
-      emoji: '🛡️',
-      test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/,
-    },
-    {
-      emoji: '🤖',
-      test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/,
-    },
-    {
-      emoji: '💻',
-      test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/,
-    },
-    {
-      emoji: '💡',
-      test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/,
-    },
-    {
-      emoji: '🚀',
-      test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/,
-    },
-    {
-      emoji: '🎉',
-      test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/,
-    },
-    {
-      emoji: '❤️',
-      test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/,
-    },
-    {
-      emoji: '👏',
-      test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/,
-    },
-    {
-      emoji: '🔥',
-      test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/,
-    },
+    { emoji: '🛡️', test: /(cyber|securite|security|hacking|hack|vulnerabilite|vulnerability|faille|malware|phishing|protection|privacy|confidentialite)/ },
+    { emoji: '🤖', test: /(^|\W)(ia|ai)(\W|$)|intelligence artificielle|machine learning|deep learning|llm|chatgpt|gemini|claude|automatisation|automation|robot/ },
+    { emoji: '💻', test: /(developpement|developer|developpeur|dev\b|code\b|coding|programmation|programming|javascript|typescript|python|html|css|github|git\b|api\b|backend|frontend|web\b|application|app\b|bot\b)/ },
+    { emoji: '💡', test: /(astuce|conseil|tip\b|guide|tutoriel|tutorial|tuto\b|apprendre|learn|formation|cours|explication|comment faire|saviez-vous)/ },
+    { emoji: '🚀', test: /(lancement|launch|deploy|deploiement|release|sortie|disponible|nouveau projet|nouvelle version|mise a jour|update|beta|production)/ },
+    { emoji: '🎉', test: /(annonce|evenement|event|concours|cadeau|giveaway|celebr|anniversaire|special)/ },
+    { emoji: '❤️', test: /(merci|communaute|community|famille|ensemble|soutien|support|bienvenue|welcome|abonne|abonnes|followers)/ },
+    { emoji: '👏', test: /(reussite|succes|success|objectif atteint|milestone|felicitation|bravo|accomplissement|termine|finalise)/ },
+    { emoji: '🔥', test: /(nouveau|nouveaute|incroyable|puissant|performance|innovation|exclusif|exclusivite|top\b|meilleur)/ },
   ];
 
-  for (const rule of rules) {
-    if (rule.test.test(t)) return rule.emoji;
-  }
-
+  for (const rule of rules) if (rule.test.test(t)) return rule.emoji;
   if (m.imageMessage) return '❤️';
   if (m.videoMessage) return '🔥';
   if (m.audioMessage) return '🎧';
@@ -126,20 +96,13 @@ function readLocalState() {
 function writeLocalState(ids, reactNext) {
   try {
     fs.mkdirSync(path.dirname(STORE_FILE), { recursive: true });
-    fs.writeFileSync(
-      STORE_FILE,
-      JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), reactNext, updatedAt: new Date().toISOString() }, null, 2)
-    );
+    fs.writeFileSync(STORE_FILE, JSON.stringify({ recentServerIds: ids.slice(-MAX_SEEN), reactNext, updatedAt: new Date().toISOString() }, null, 2));
   } catch (_) {}
 }
 
 async function getMongoDb() {
   if (!process.env.MONGODB_URI) return null;
-  try {
-    return await require('./mongoClient').getDb();
-  } catch (_) {
-    return null;
-  }
+  try { return await require('./mongoClient').getDb(); } catch (_) { return null; }
 }
 
 async function loadState() {
@@ -159,7 +122,6 @@ async function loadState() {
 async function persistState(state) {
   const ids = Array.from(state.seen).slice(-MAX_SEEN);
   writeLocalState(ids, state.reactNext);
-
   const db = await getMongoDb();
   if (db) {
     try {
@@ -175,13 +137,28 @@ async function persistState(state) {
 }
 
 async function subscribeToLiveUpdates(sock, jid) {
-  if (typeof sock.subscribeNewsletterUpdates !== 'function') return;
+  if (typeof sock.subscribeNewsletterUpdates !== 'function') {
+    console.warn('[ChannelReact] ⚠️ subscribeNewsletterUpdates non supporté');
+    return false;
+  }
   try {
     const result = await sock.subscribeNewsletterUpdates(jid);
     console.log(`[ChannelReact] 📡 Live updates actifs${result?.duration ? ` (${result.duration})` : ''}`);
+    return true;
   } catch (err) {
     console.warn('[ChannelReact] ⚠️ Abonnement live updates non confirmé:', err.message);
+    return false;
   }
+}
+
+function scheduleLiveSubscriptions(sock, jid) {
+  if (sock._dipperMainChannelReactLiveTimers) return;
+  const delays = [2000, 60_000, 5 * 60_000, 60 * 60_000 + 5000];
+  sock._dipperMainChannelReactLiveTimers = delays.map(delay => {
+    const timer = setTimeout(() => subscribeToLiveUpdates(sock, jid).catch(() => {}), delay);
+    if (timer.unref) timer.unref();
+    return timer;
+  });
 }
 
 async function installMainChannelAutoReact(sock) {
@@ -193,7 +170,6 @@ async function installMainChannelAutoReact(sock) {
     console.warn('[ChannelReact] ⚠️ newsletterJid invalide/absent');
     return;
   }
-
   if (typeof sock.newsletterReactMessage !== 'function') {
     console.warn('[ChannelReact] ⚠️ newsletterReactMessage non supporté par cette version de Baileys');
     return;
@@ -201,12 +177,9 @@ async function installMainChannelAutoReact(sock) {
 
   const statePromise = loadState();
   sock._dipperMainChannelReactQueue = sock._dipperMainChannelReactQueue || Promise.resolve();
-
-  // Le mécanisme de live updates reste inchangé.
-  setTimeout(() => subscribeToLiveUpdates(sock, jid).catch(() => {}), 2000);
+  scheduleLiveSubscriptions(sock, jid);
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
-    // Réagir uniquement aux NOUVELLES publications, jamais à l'historique synchronisé.
     if (type !== 'notify') return;
 
     for (const msg of messages || []) {
@@ -227,10 +200,7 @@ async function installMainChannelAutoReact(sock) {
           const shouldReact = state.reactNext;
           state.reactNext = !state.reactNext;
           state.seen.add(serverId);
-          while (state.seen.size > MAX_SEEN) {
-            const oldest = state.seen.values().next().value;
-            state.seen.delete(oldest);
-          }
+          while (state.seen.size > MAX_SEEN) state.seen.delete(state.seen.values().next().value);
           await persistState(state);
 
           if (!shouldReact) {
@@ -240,24 +210,15 @@ async function installMainChannelAutoReact(sock) {
 
           const text = extractPublicationText(msg);
           const emoji = chooseReactionEmoji(text, msg.message);
-
-          // Petit délai naturel et surtout temps laissé à WhatsApp pour finaliser
-          // l'enregistrement serveur de la publication avant la réaction.
           await wait(2200);
           await sock.newsletterReactMessage(jid, serverId, emoji);
           console.log(`[ChannelReact] ✅ Publication ${serverId} → ${emoji}`);
         })
-        .catch(err => {
-          console.warn(`[ChannelReact] ⚠️ Réaction échouée pour ${serverId}: ${String(err?.message || err).slice(0, 160)}`);
-        });
+        .catch(err => console.warn(`[ChannelReact] ⚠️ Réaction échouée pour ${serverId}: ${String(err?.message || err).slice(0, 160)}`));
     }
   });
 
   console.log(`[ChannelReact] ✅ Auto-réactions 1 publication sur 2 activées sur le compte principal → ${jid}`);
 }
 
-module.exports = {
-  installMainChannelAutoReact,
-  chooseReactionEmoji,
-  extractPublicationText,
-};
+module.exports = { installMainChannelAutoReact, chooseReactionEmoji, extractPublicationText };
