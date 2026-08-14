@@ -72,3 +72,6 @@ require('./special-presentation-patch');
 // Le ping premium utilise l'image du style actif : le vérificateur legacy
 // doit accepter withImage:true lorsqu'il voit le marqueur premium.
 require('./premium-runtime-verifier-patch');
+
+// Dernier filet : aucune commande explicite ne doit finir silencieusement.
+require('./command-response-guarantee-patch');
