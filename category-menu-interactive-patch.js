@@ -72,3 +72,6 @@ require('./command-response-guarantee-patch');
 
 // .owner dédié : deux vCards + newsletter + réseaux sociaux.
 require('./owner-premium-patch');
+
+// Bilingue global : français par défaut, anglais via .language.
+require('./bilingual-patch');
