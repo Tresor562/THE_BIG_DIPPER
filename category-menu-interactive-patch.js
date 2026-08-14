@@ -65,6 +65,9 @@ require('./unknown-command-visual-patch');
 require('./unknown-command-compact-patch');
 require('./special-presentation-patch');
 require('./premium-runtime-verifier-patch');
+
+// Normalise le filtre mute avant l'installateur de garantie de réponse.
+require('./command-response-guarantee-prep');
 require('./command-response-guarantee-patch');
 
 // .owner dédié : deux vCards + newsletter + réseaux sociaux.
