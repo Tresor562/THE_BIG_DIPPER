@@ -90,17 +90,20 @@ src = src.replace(
 );
 patchReturnText('function buildCategoryDetail(', '// ══════════════════════════════════════════════════════════════\n// 🔎 MOTEUR DE RECHERCHE', 'détail catégorie');
 
-src = src.replace(
-  'buildImmersiveHeader(style, senderJid, count, botName) +',
-  "buildImmersiveHeader(style, senderJid, count, botName, context.displayName || '') +"
-);
-if (src.includes('function buildAllMenuChunks(')) {
-  const allStart = src.indexOf('function buildAllMenuChunks(');
-  const allEnd = src.indexOf('\nmodule.exports = {', allStart);
-  if (allEnd > allStart) {
-    let all = src.slice(allStart, allEnd);
-    all = all.replaceAll('chunks.push((current + footer).trim());', 'chunks.push(disciplineMenuText((current + footer).trim()));');
-    src = src.slice(0, allStart) + all + src.slice(allEnd);
+const hasGeneratedAllMenu = src.includes('function buildAllMenuChunks(') || src.includes("if (body === 'allmenu')");
+if (hasGeneratedAllMenu) {
+  src = src.replace(
+    'buildImmersiveHeader(style, senderJid, count, botName) +',
+    "buildImmersiveHeader(style, senderJid, count, botName, context.displayName || '') +"
+  );
+  if (src.includes('function buildAllMenuChunks(')) {
+    const allStart = src.indexOf('function buildAllMenuChunks(');
+    const allEnd = src.indexOf('\nmodule.exports = {', allStart);
+    if (allEnd > allStart) {
+      let all = src.slice(allStart, allEnd);
+      all = all.replaceAll('chunks.push((current + footer).trim());', 'chunks.push(disciplineMenuText((current + footer).trim()));');
+      src = src.slice(0, allStart) + all + src.slice(allEnd);
+    }
   }
 }
 
@@ -123,9 +126,9 @@ src = src.replace(
   'buildCategoryOverview(styleActif, botName, ownerName, userRank, prefix, categoryNames, categories, count, rawSender, displayName);'
 );
 
-if (!src.includes('[ALLMENU REAL DISPLAY NAME]')) {
+if (hasGeneratedAllMenu && !src.includes('[ALLMENU REAL DISPLAY NAME]')) {
   src = src.replace(
-    /(if \(body === 'allmenu'\) \{[\s\S]{0,300}?const ctx = buildMenuContext\(rawSender, isSupreme, sock\);)/,
+    /(if \(body === 'allmenu'\) \{[\s\S]{0,400}?const ctx = buildMenuContext\(rawSender, isSupreme, sock\);)/,
     "$1\n    ctx.displayName = displayName; // [ALLMENU REAL DISPLAY NAME]"
   );
 }
@@ -140,21 +143,29 @@ if (!/senderJid:\s*rawSender,\s*displayName/.test(src)) {
 fs.writeFileSync(menuPath, src, 'utf8');
 
 const final = fs.readFileSync(menuPath, 'utf8');
-for (const marker of [
+const basicRequired = [
   '[BENIN GREETING SAFE]',
   MARKER,
   '[DISPLAY NAME NO LID]',
   '[MENU REAL DISPLAY NAME]',
-  '[ALLMENU REAL DISPLAY NAME]',
   'return disciplineMenuText(text);',
   'entry.displayName',
   'senderJid: rawSender, displayName',
-  "context.displayName || ''",
-]) {
+];
+for (const marker of basicRequired) {
   if (!final.includes(marker)) throw new Error('[menu-ui] garde-fou absent: ' + marker);
+}
+
+const finalHasAllMenu = final.includes('function buildAllMenuChunks(') || final.includes("if (body === 'allmenu')");
+if (finalHasAllMenu && !final.includes('[ALLMENU REAL DISPLAY NAME]')) {
+  throw new Error('[menu-ui] allmenu présent mais displayName non propagé');
+}
+const finalUsesContextCategory = /function buildCategoryDetail\([^)]*context\s*=\s*\{\}/.test(final);
+if (finalUsesContextCategory && !final.includes("context.displayName || ''")) {
+  throw new Error('[menu-ui] catégorie stylée présente mais displayName non propagé');
 }
 
 const check = spawnSync(process.execPath, ['--check', menuPath], { encoding: 'utf8' });
 if (check.status !== 0) throw new Error('[menu-ui] syntaxe menu invalide: ' + (check.stderr || check.stdout));
 
-console.log('[menu-ui] ✅ heure Bénin + nom réel + catégories/allmenu + 21 styles disciplinés');
+console.log(`[menu-ui] ✅ heure Bénin + nom réel + styles disciplinés | allmenu=${finalHasAllMenu ? 'yes' : 'optional'}`);
