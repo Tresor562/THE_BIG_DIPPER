@@ -64,3 +64,7 @@ console.log('[category-interactive] ✅ menus de catégories = style + newslette
 // Correction floue : même moteur interactif, puis réduction visuelle dédiée.
 require('./unknown-command-visual-patch');
 require('./unknown-command-compact-patch');
+
+// Enveloppe premium réservée aux commandes spéciales : menu/allmenu/ping/repere
+// + registre central des autres commandes d'identité/navigation/système.
+require('./special-presentation-patch');
