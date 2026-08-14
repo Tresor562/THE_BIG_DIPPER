@@ -26,6 +26,9 @@ function check(rel) {
   if (result.status !== 0) throw new Error(`[runtime-core] syntaxe invalide ${rel}: ${result.stderr || result.stdout}`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MENU / ALLMENU — jamais bloqué par une longue chaîne d'URLs d'images
+// ═══════════════════════════════════════════════════════════════════════════
 const menuRel = 'commands/general_tools/menu.js';
 const oldMenuFetch = `// Récupère une image personnalisée depuis une URL unique (menu personnalisé).
 async function getImageBufferFromUrl(url) {
@@ -40,15 +43,18 @@ async function getImageBufferFromUrl(url) {
     });
     return responseToImageBuffer(res);
   } catch (_) {
+    // Image personnalisée invalide/inaccessible → repli sur l'image du style
     return null;
   }
 }
 
 async function getImageBufferForStyle(styleNum) {
   const axios = require('axios');
+  // Filtrer les entrées vides, non textuelles ou non HTTP(S).
   const urls = (STYLE_IMAGE_URLS[styleNum] || STYLE_IMAGE_URLS[1])
     .filter(u => typeof u === 'string' && /^https?:\\/\\//i.test(u));
   if (urls.length === 0) return null;
+  // Choisir une URL au hasard
   const shuffled = [...urls].sort(() => Math.random() - 0.5);
   for (const url of shuffled) {
     try {
@@ -60,9 +66,11 @@ async function getImageBufferForStyle(styleNum) {
       });
       const image = responseToImageBuffer(res);
       if (image) return image;
-    } catch (_) {}
+    } catch (_) {
+      // Essaie l'URL suivante si celle-ci échoue
+    }
   }
-  return null;
+  return null; // Toutes les URLs ont échoué → menu en texte
 }
 `;
 
@@ -119,9 +127,11 @@ async function getImageBufferForStyle(styleNum) {
   const key = 'style:' + String(styleNum);
   const cached = getCachedMenuImage(key);
   if (cached) return cached;
+
   const urls = (STYLE_IMAGE_URLS[styleNum] || STYLE_IMAGE_URLS[1])
     .filter(u => typeof u === 'string' && /^https?:\\/\\//i.test(u));
   if (!urls.length) return null;
+
   const candidates = [...urls].sort(() => Math.random() - 0.5).slice(0, 3);
   const results = await Promise.all(candidates.map(url => fetchMenuImage(url, 3000)));
   const image = results.find(Boolean) || null;
@@ -238,4 +248,4 @@ require('./supreme-owner-reaction-patch');
 require('./connected-owner-command-audit-fix');
 require('./command-admin-capability-audit');
 
-console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, accès connected-owner + capacités bot-admin audités');
+console.log('[runtime-core] ✅ menu/allmenu, handler, sessions, tagall/hidetag + accès connected-owner + audit bot-admin stabilisés');
