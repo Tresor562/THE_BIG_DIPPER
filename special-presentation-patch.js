@@ -22,22 +22,36 @@ for (const file of [menuPath, pingPath, reperePath, handlerPath, packagePath, he
 fs.copyFileSync(helperOverride, helperPath);
 console.log('[special-presentation] helper premium copié');
 
-function replaceRegexOnce(src, regex, replacement, label) {
+function replaceRegexOnce(src, regex, replacement, label, optional = false) {
   const matches = src.match(regex);
   const count = matches ? matches.length : 0;
+  if (count === 0 && optional) {
+    console.log(`[special-presentation] ${label}: ancre absente, fallback auto-détection utilisé`);
+    return src;
+  }
   if (count !== 1) {
     throw new Error(`[special-presentation] ${label}: attendu 1 occurrence, trouvé ${count}`);
   }
   return src.replace(regex, replacement);
 }
 
-function injectAfterNearby(src, anchorRegex, targetRegex, addition, alreadyMarker, label, windowSize = 900) {
+function injectAfterNearby(src, anchorRegex, targetRegex, addition, alreadyMarker, label, windowSize = 900, optional = false) {
   if (src.includes(alreadyMarker)) return src;
   const anchor = src.search(anchorRegex);
-  if (anchor < 0) throw new Error(`[special-presentation] ${label}: ancre principale introuvable`);
+  if (anchor < 0) {
+    if (optional) {
+      console.log(`[special-presentation] ${label}: ancre principale absente, fallback auto-détection utilisé`);
+      return src;
+    }
+    throw new Error(`[special-presentation] ${label}: ancre principale introuvable`);
+  }
   const window = src.slice(anchor, anchor + windowSize);
   const target = window.match(targetRegex);
   if (!target || target.index == null) {
+    if (optional) {
+      console.log(`[special-presentation] ${label}: propriété cible absente, fallback auto-détection utilisé`);
+      return src;
+    }
     throw new Error(`[special-presentation] ${label}: propriété cible introuvable près de l'ancre`);
   }
   const insertAt = anchor + target.index + target[0].length;
@@ -56,14 +70,24 @@ if (!menu.includes(MARKER)) {
   );
 }
 
-if (!menu.includes("commandName: commandName || 'special'")) {
-  const hookAnchor = /\n\s*const buildRelayNodes\s*=\s*\(\)\s*=>\s*\{/;
-  const match = menu.match(hookAnchor);
-  if (!match || match.index == null) throw new Error('[special-presentation] ancre buildRelayNodes absente');
-  const hook = `\n  if (specialPresentation) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || 'special',\n    });\n  }\n`;
-  menu = menu.slice(0, match.index) + hook + menu.slice(match.index);
+// Détection indépendante de la structure interne de la branche allmenu.
+// Si un futur patch réécrit le bloc `chunks[i]`, le contenu `ALL MENU` suffit.
+if (!menu.includes('[ALLMENU PREMIUM AUTO DETECT]')) {
+  const hookRegex = /\n\s*const buildRelayNodes\s*=\s*\(\)\s*=>\s*\{/;
+  const hookMatch = menu.match(hookRegex);
+  if (!hookMatch || hookMatch.index == null) throw new Error('[special-presentation] ancre buildRelayNodes absente');
+  const hook = `\n  const autoAllMenuPremium = /(?:^|\\n)\\s*(?:📚\\s*)?\\*?ALL MENU\\b/i.test(String(text || '')); // [ALLMENU PREMIUM AUTO DETECT]\n  if (specialPresentation || autoAllMenuPremium) {\n    const { sendSpecialPresentation } = require('../../utils/specialPresentation');\n    return sendSpecialPresentation(sock, jid, {\n      text,\n      style,\n      imageBuffer,\n      commandName: commandName || (autoAllMenuPremium ? 'allmenu' : 'special'),\n    });\n  }\n`;
+
+  // Remplacer l'ancien hook premium s'il existe déjà, sinon l'insérer.
+  const oldHookRegex = /\n\s*if \(specialPresentation\) \{[\s\S]*?commandName:\s*commandName \|\| 'special',\s*\}\);\s*\}/;
+  if (oldHookRegex.test(menu)) {
+    menu = menu.replace(oldHookRegex, hook.trimEnd());
+  } else {
+    menu = menu.slice(0, hookMatch.index) + hook + menu.slice(hookMatch.index);
+  }
 }
 
+// Menu principal : cette branche est stable et doit être explicitement premium.
 menu = injectAfterNearby(
   menu,
   /text:\s*menuText\s*,/,
@@ -73,13 +97,17 @@ menu = injectAfterNearby(
   'menu principal premium'
 );
 
+// Allmenu : optimisation seulement. Si cette branche n'existe pas sous cette
+// forme, l'auto-détection ci-dessus assure quand même la présentation premium.
 menu = injectAfterNearby(
   menu,
   /text:\s*chunks\s*\[\s*i\s*\]\s*,/,
   /withImage:\s*i\s*===\s*0\s*,/,
   "\n        specialPresentation: i === 0,\n        commandName: 'allmenu',",
   "commandName: 'allmenu'",
-  'allmenu premium'
+  'allmenu premium',
+  900,
+  true
 );
 
 if (!menu.includes('module.exports.getImageBufferForStyle = getImageBufferForStyle;')) {
@@ -161,7 +189,7 @@ const finalHandler = fs.readFileSync(handlerPath, 'utf8');
 for (const required of [
   '[SPECIAL PREMIUM PRESENTATION]',
   "commandName: 'menu'",
-  "commandName: 'allmenu'",
+  '[ALLMENU PREMIUM AUTO DETECT]',
   'module.exports.getImageBufferForStyle = getImageBufferForStyle;',
 ]) {
   if (!finalMenu.includes(required)) throw new Error(`[special-presentation] menu incomplet: ${required}`);
