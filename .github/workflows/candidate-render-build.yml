@@ -1,0 +1,68 @@
+name: Candidate Render build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  render-build:
+    name: Full Render preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout wrapper and bot submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Verify expected bot revision
+        run: |
+          test "$(git -C bot rev-parse HEAD)" = "1f8bc59d2eab2c2094dbb258f3d16efb979335af"
+          test -f bot/scripts/install-hot-command-updater.js
+          test -f bot/scripts/install-hot-oidc-auth.js
+          test -f bot/utils/hotCommandUpdater.js
+          test -f bot/ai_chat/ai/zeroCostRouter.js
+          test -f bot/scripts/install-exaucee-intent-orchestrator.js
+
+      - name: Syntax-check high-risk Exaucee and HOT files
+        run: |
+          node --check bot/ai_chat/runtime.js
+          node --check bot/ai_chat/ai/zeroCostRouter.js
+          node --check bot/ai_chat/knowledge/creatorProfile.js
+          node --check bot/ai_chat/cognition/intentOrchestrator.js
+          node --check bot/scripts/install-exaucee-research.js
+          node --check bot/scripts/install-exaucee-bot-knowledge.js
+          node --check bot/scripts/install-exaucee-intent-orchestrator.js
+          node --check bot/scripts/install-hot-command-updater.js
+          node --check bot/scripts/install-hot-oidc-auth.js
+
+      - name: Run full wrapper install path
+        env:
+          CI: 'true'
+        run: npm install
+
+      - name: Verify final patched runtime syntax
+        run: |
+          node --check bot/index.js
+          node --check bot/handler.js
+          node --check bot/api/server.js
+          node --check bot/ai_chat/runtime.js
+
+      - name: Run focused Exaucee tests
+        working-directory: bot
+        run: |
+          node --test tests/exaucee-core.test.js tests/exaucee-runtime.test.js tests/exaucee-dynamic.test.js tests/exaucee-bootstrap.test.js
+          if [ -f tests/exaucee-cognition.test.js ]; then node --test tests/exaucee-cognition.test.js; fi
+          if [ -f tests/exaucee-multigame.test.js ]; then node --test tests/exaucee-multigame.test.js; fi
+
+      - name: Run HOT updater tests again after patch chain
+        working-directory: bot
+        run: npm run test:hot-updater
