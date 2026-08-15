@@ -51,3 +51,7 @@ console.log('[session-isolation-finalize] ✅ prefix Mongo/runtime + menu image 
 require('./runtime-settings-persistence-v2');
 require('./runtime-settings-shutdown-guard');
 require('./fix-session-preferences-test-exit');
+// Le test généré plus haut ne doit jamais ouvrir le pool Mongo réel pendant
+// le build Render. On le remplace après installation du backend durable par
+// une variante synchrone, isolée de Mongo et protégée par watchdog 60 s.
+require('./session-preferences-build-test-guard');
