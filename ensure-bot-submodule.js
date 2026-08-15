@@ -27,34 +27,48 @@ function runGit(args, label) {
 }
 
 function ensureBotSubmodule() {
-  if (fs.existsSync(HANDLER)) {
-    console.log('[submodule] ✅ bot/ déjà initialisé');
-    return;
-  }
-
-  console.log('[submodule] bot/ incomplet — initialisation forcée du sous-module privé DIPPER-...');
-
   if (!fs.existsSync(path.join(ROOT, '.gitmodules'))) {
     throw new Error('[submodule] .gitmodules absent : impossible de récupérer bot/.');
   }
 
+  // Toujours repartir du commit exact enregistré par le wrapper.
+  // Render peut réutiliser des caches de build : si une tentative précédente
+  // a laissé bot/ partiellement patché, sauter cette étape rend les patches
+  // suivants non déterministes (ancres trouvées 0 ou plusieurs fois).
+  console.log('[submodule] synchronisation + remise à zéro déterministe de bot/...');
   runGit(['submodule', 'sync', '--recursive'], 'git submodule sync');
-  runGit(['submodule', 'update', '--init', '--recursive', '--force'], 'git submodule update');
+  runGit(['submodule', 'update', '--init', '--recursive', '--force'], 'git submodule update --force');
 
   if (!fs.existsSync(HANDLER)) {
     throw new Error(
-      '[submodule] bot/handler.js toujours absent après git submodule update. ' +
-      'Render doit avoir accès au dépôt privé Tresor562/DIPPER-. ' +
-      'Dans Render, reconnecte/autorise le compte GitHub de déploiement sur ce dépôt privé.'
+      '[submodule] bot/handler.js absent après git submodule update. ' +
+      'Render doit avoir accès au dépôt privé Tresor562/DIPPER-.'
     );
   }
+
+  // Supprime uniquement les fichiers non suivis laissés par d'anciens builds.
+  // Les fichiers ignorés (par ex. node_modules cache) sont conservés pour ne
+  // pas rallonger inutilement les installations.
+  runGit(['-C', BOT, 'clean', '-fd'], 'git clean bot');
 
   const rev = spawnSync('git', ['-C', BOT, 'rev-parse', '--short=12', 'HEAD'], {
     cwd: ROOT,
     encoding: 'utf8',
   });
   const sha = rev.status === 0 ? String(rev.stdout || '').trim() : '';
-  console.log(`[submodule] ✅ bot/ initialisé${sha ? ` @ ${sha}` : ''}`);
+
+  const dirty = spawnSync('git', ['-C', BOT, 'status', '--porcelain'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  if (dirty.status !== 0) {
+    throw new Error('[submodule] impossible de vérifier la propreté de bot/.');
+  }
+  if (String(dirty.stdout || '').trim()) {
+    throw new Error('[submodule] bot/ reste modifié après reset — build refusé pour éviter un état indéterministe.');
+  }
+
+  console.log(`[submodule] ✅ bot/ propre${sha ? ` @ ${sha}` : ''}`);
 }
 
 if (require.main === module) ensureBotSubmodule();
