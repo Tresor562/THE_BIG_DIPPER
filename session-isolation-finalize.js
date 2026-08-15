@@ -50,3 +50,4 @@ console.log('[session-isolation-finalize] ✅ prefix Mongo/runtime + menu image 
 // préférences par son backend Mongo durable et brancher les réglages de groupe.
 require('./runtime-settings-persistence-v2');
 require('./runtime-settings-shutdown-guard');
+require('./fix-session-preferences-test-exit');
