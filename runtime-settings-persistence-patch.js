@@ -46,6 +46,20 @@ function dirFor(sid) {
 function fileFor(sid) { return path.join(dirFor(sid), 'preferences.json'); }
 function clone(value) { return JSON.parse(JSON.stringify(value ?? {})); }
 
+function restoreBinaryAssets(data, sid) {
+  const restored = data && typeof data === 'object' ? data : {};
+  if (typeof restored.menuImageData === 'string' && restored.menuImageData.length > 64) {
+    try {
+      const file = path.join(dirFor(sid), 'menu_image.jpg');
+      fs.writeFileSync(file, Buffer.from(restored.menuImageData, 'base64'));
+      restored.menuImagePath = file;
+    } catch (err) {
+      console.warn('[runtime-settings] restauration image menu échouée:', err.message);
+    }
+  }
+  return restored;
+}
+
 function load(sid) {
   const key = safeSid(sid);
   if (memory.has(key)) return memory.get(key);
@@ -54,17 +68,19 @@ function load(sid) {
     const file = fileFor(key);
     if (fs.existsSync(file)) data = JSON.parse(fs.readFileSync(file, 'utf8')) || {};
   } catch (_) { data = {}; }
+  data = restoreBinaryAssets(data, key);
   memory.set(key, data);
   return data;
 }
 
 function writeLocal(data, sid) {
   const key = safeSid(sid);
+  const clean = restoreBinaryAssets(data, key);
   const file = fileFor(key);
   const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), 'utf8');
   fs.renameSync(tmp, file);
-  memory.set(key, data);
+  memory.set(key, clean);
   return true;
 }
 
@@ -128,17 +144,41 @@ function update(values, sid) {
 }
 function sessionFile(name, sid) { return path.join(dirFor(sid), String(name).replace(/[\\/]/g, '_')); }
 
+async function migrateLocalPreferencesToMongo(db) {
+  const root = path.join(process.cwd(), 'database', 'sessions');
+  if (!fs.existsSync(root)) return 0;
+  let migrated = 0;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sid = safeSid(entry.name);
+    const file = fileFor(sid);
+    if (!fs.existsSync(file)) continue;
+    let local;
+    try { local = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (_) { continue; }
+    const existing = await db.collection(COLLECTION).findOne({ _id: sid }, { projection: { _id: 1 } });
+    if (existing) continue;
+    await db.collection(COLLECTION).updateOne(
+      { _id: sid },
+      { $set: { data: clone(local), updatedAt: new Date(), migratedFromLocal: true } },
+      { upsert: true }
+    );
+    migrated++;
+  }
+  return migrated;
+}
+
 async function hydrateAllFromMongo() {
   if (hydratePromise) return hydratePromise;
   hydratePromise = (async () => {
     const db = await mongoDb();
     if (!db) return false;
+    const migrated = await migrateLocalPreferencesToMongo(db);
     const docs = await db.collection(COLLECTION).find({}).toArray();
     for (const doc of docs) {
       if (!doc?._id || !doc.data || typeof doc.data !== 'object') continue;
       writeLocal(clone(doc.data), doc._id);
     }
-    console.log(`[runtime-settings] ✅ ${docs.length} préférence(s) de session restaurée(s) depuis MongoDB`);
+    console.log(`[runtime-settings] ✅ ${docs.length} préférence(s) restaurée(s) depuis MongoDB${migrated ? ` • ${migrated} migration(s) locale(s)` : ''}`);
     return true;
   })().catch(err => {
     console.warn('[runtime-settings] restauration Mongo échouée:', err.message);
@@ -186,6 +226,17 @@ replaceOnce(
   'ghostg persistant Mongo'
 );
 
+// L'image du menu était auparavant sauvegardée uniquement dans un fichier
+// local Render. Conserver aussi ses octets en base64 dans les préférences
+// Mongo permet de recréer le fichier après n'importe quel restart/redeploy.
+replaceOnce(
+  'commands/bot_sovereignty/setmenuimage.js',
+  `      const fallbackPath = sessionPreferences.sessionFile('menu_image.jpg');\n      fs.writeFileSync(fallbackPath, finalBuffer);\n      sessionPreferences.set('menuImagePath', fallbackPath);`,
+  `      const fallbackPath = sessionPreferences.sessionFile('menu_image.jpg');\n      fs.writeFileSync(fallbackPath, finalBuffer);\n      sessionPreferences.update({\n        menuImagePath: fallbackPath,\n        menuImageData: finalBuffer.toString('base64'), // [RUNTIME MENU IMAGE MONGO]\n      });`,
+  '[RUNTIME MENU IMAGE MONGO]',
+  'image menu persistante Mongo'
+);
+
 replaceOnce(
   'index.js',
   "    await require('./utils/prefixManager').initializePrefix();",
@@ -194,9 +245,12 @@ replaceOnce(
   'restauration réglages avant chargement du handler'
 );
 
-for (const rel of ['utils/sessionPreferences.js', 'database.js', 'index.js']) {
+for (const rel of [
+  'utils/sessionPreferences.js', 'database.js', 'index.js',
+  'commands/bot_sovereignty/setmenuimage.js',
+]) {
   const result = spawnSync(process.execPath, ['--check', p(rel)], { encoding: 'utf8' });
   if (result.status !== 0) throw new Error(`[runtime-settings] syntaxe ${rel}: ${result.stderr || result.stdout}`);
 }
 
-console.log('[runtime-settings] ✅ mode/style/autoreact/anticall/identité + réglages groupes persistants Mongo');
+console.log('[runtime-settings] ✅ réglages runtime/groupes + identité/style/menu image persistants Mongo');
