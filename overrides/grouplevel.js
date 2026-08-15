@@ -27,6 +27,8 @@ module.exports = {
   botAdminNeeded: false,
 
   async execute(sock, msg, args, extra) {
+    // IMPORTANT : extra.from est le JID du groupe courant. Le réglage est donc
+    // enregistré uniquement sous ce groupe, jamais comme réglage global.
     const from = extra.from;
     const sub = String(args[0] || '').toLowerCase();
     const settings = database.getGroupSettings(from);
@@ -34,13 +36,23 @@ module.exports = {
     if (sub === 'on' || sub === 'off') {
       if (!canManage(extra, msg)) return extra.reply(`🔒 Seuls les administrateurs peuvent modifier GroupLevel.\n\n${extra.phrases.footer()}`);
       const enabled = sub === 'on';
-      database.updateGroupSettings(from, { grouplevel: enabled });
-      return extra.reply(`${enabled ? '✅' : '⛔'} *GroupLevel ${enabled ? 'activé' : 'désactivé'}.*\n${enabled ? 'Les LEVEL UP automatiques sont actifs.' : 'Le comptage reste conservé, mais les annonces automatiques sont coupées.'}\n\n${extra.phrases.footer()}`);
+      database.updateGroupSettings(from, { grouplevel: enabled }); // [GROUPLEVEL GROUP SCOPED]
+      return extra.reply(
+        `${enabled ? '✅' : '⛔'} *GroupLevel ${enabled ? 'activé' : 'désactivé'} dans ce groupe uniquement.*\n` +
+        `${enabled ? 'Les messages et LEVEL UP seront suivis uniquement ici.' : 'Le comptage automatique est arrêté ici ; l’historique déjà enregistré reste conservé.'}\n\n` +
+        `${extra.phrases.footer()}`
+      );
     }
 
     if (sub === 'status') {
-      const enabled = settings?.grouplevel !== false;
-      return extra.reply(`🎮 *GROUP LEVEL*\nÉtat : *${enabled ? 'ACTIF ✅' : 'DÉSACTIVÉ ⛔'}*\nBase : nombre total de messages envoyés dans ce groupe.\n\n${extra.phrases.footer()}`);
+      const enabled = settings?.grouplevel === true; // [GROUPLEVEL EXPLICIT ON]
+      return extra.reply(
+        `🎮 *GROUP LEVEL*\n` +
+        `État dans ce groupe : *${enabled ? 'ACTIF ✅' : 'DÉSACTIVÉ ⛔'}*\n` +
+        `Portée : *ce groupe uniquement*\n` +
+        `Base : nombre total de messages envoyés dans ce groupe.\n\n` +
+        `${extra.phrases.footer()}`
+      );
     }
 
     if (sub === 'top' || sub === 'leaderboard' || sub === 'classement') {
