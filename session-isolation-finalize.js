@@ -48,4 +48,4 @@ console.log('[session-isolation-finalize] ✅ prefix Mongo/runtime + menu image 
 
 // Après l'isolation par session, remplacer le stockage local éphémère des
 // préférences par son backend Mongo durable et brancher les réglages de groupe.
-require('./runtime-settings-persistence-patch');
+require('./runtime-settings-persistence-v2');
