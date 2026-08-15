@@ -44,7 +44,7 @@
     "lottie-web": "^5.13.0",
     "moment-timezone": "^0.5.45",
     "node-fetch": "^2.7.0",
-    "node-webpmux": "^3.3.0",
+    "node-webpmux": "^3.1.7",
     "pino": "^9.0.0",
     "qrcode": "^1.5.3",
     "qrcode-terminal": "^0.12.0",
