@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="8f16ea3b0c561eeaf750f9ddda823a7c7c887bba"
+          EXPECTED="d15fe41d9dd0c95c41185dabb007012f5e1905a9"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -46,4 +46,4 @@ jobs:
           grep -q "install-hot-command-updater.js" package.json
           grep -q "install-hot-oidc-auth.js" package.json
           grep -q "test:hot-updater" package.json
-          echo "The deep Exaucee prestart verification is executed by the guarded bot commit during Render postinstall."
+          echo "Deep Exaucee + Mega GameMaster preflight runs inside guarded bot commit during Render postinstall."
