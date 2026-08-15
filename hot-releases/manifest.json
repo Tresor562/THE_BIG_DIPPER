@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "active": false,
+  "algorithm": "RSA-OAEP-SHA256+AES-256-GCM",
+  "releaseId": null,
+  "privateCommitSha": null,
+  "targetFingerprint": null,
+  "createdAt": null,
+  "payload": null
+}
