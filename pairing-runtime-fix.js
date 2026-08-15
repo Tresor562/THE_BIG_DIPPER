@@ -53,14 +53,20 @@ patch(
 // cas, mais sessionManager.js ignorait tout ce qui n'était pas 'notify'.
 // Résultat : session affichée connectée, mais les commandes tapées depuis le
 // compte connecté n'atteignent jamais handler.handleMessage().
+//
+// IMPORTANT BUILD : session-uptime-guard-patch.js s'exécute plus tard et
+// protège la même capacité. On pose donc aussi ses marqueurs officiels afin
+// qu'il reconnaisse cet état comme déjà corrigé au lieu de chercher l'ancienne
+// ligne notify-only et de faire échouer un rebuild idempotent.
 patch(
   sessionRel,
   "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify') return;",
   `  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    // [FIX APPEND OWNER] accepter les messages normaux et les messages
-    // envoyés depuis le compte connecté, souvent livrés en 'append'.
+    // [FIX APPEND OWNER] [MULTI SESSION APPEND FROMME]
+    // accepter les messages normaux et ceux envoyés depuis le compte connecté,
+    // souvent livrés en type='append'.
     if (type !== 'notify' && type !== 'append') return;`,
-  '[FIX APPEND OWNER]',
+  '[MULTI SESSION APPEND FROMME]',
   'messages append du compte connecté acceptés'
 );
 
@@ -70,10 +76,11 @@ patch(
   `    for (const msg of messages) {
       if (!msg.message || !msg.key?.id) continue;
 
+      // [MULTI SESSION APPEND FILTER]
       // Les append non-fromMe sont généralement des replays/synchronisations
       // d'historique : ne pas les exécuter pour éviter les doubles commandes.
-      if (type === 'append' && !msg.key.fromMe) continue;`,
-  "if (type === 'append' && !msg.key.fromMe) continue;",
+      if (type === 'append' && !msg.key?.fromMe) continue;`,
+  '[MULTI SESSION APPEND FILTER]',
   'filtre anti-doublon append'
 );
 
