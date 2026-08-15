@@ -93,6 +93,7 @@ function ensureBotSubmodule() {
   }
 
   console.log(`[submodule] ✅ bot/ propre${sha ? ` @ ${sha}` : ''}`);
+  require('./verify-build-dependency-order')();
   runHotInstallerPreflight();
 }
 
