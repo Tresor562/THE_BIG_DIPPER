@@ -45,3 +45,7 @@ for(const bad of ['process.env.PREFIX = prefix',"const DOC_ID = 'global_prefix'"
 menu=read('commands/general_tools/menu.js');
 if(!menu.includes('[SESSION MENU IMAGE FINAL]')) throw new Error('[session-isolation-finalize] image menu non sessionnée');
 console.log('[session-isolation-finalize] ✅ prefix Mongo/runtime + menu image + identité affichée isolés');
+
+// Après l'isolation par session, remplacer le stockage local éphémère des
+// préférences par son backend Mongo durable et brancher les réglages de groupe.
+require('./runtime-settings-persistence-patch');
