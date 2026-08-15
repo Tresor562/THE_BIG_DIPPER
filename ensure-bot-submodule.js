@@ -26,6 +26,30 @@ function runGit(args, label) {
   }
 }
 
+function runHotInstallerPreflight() {
+  const testFile = path.join(BOT, 'tests', 'hot-installer.test.js');
+  if (!fs.existsSync(testFile)) {
+    throw new Error('[submodule] tests/hot-installer.test.js absent du commit privé candidat.');
+  }
+
+  console.log('[submodule] préflight HOT installer...');
+  const result = spawnSync(process.execPath, ['--test', 'tests/hot-installer.test.js'], {
+    cwd: BOT,
+    encoding: 'utf8',
+    timeout: 45_000,
+    killSignal: 'SIGKILL',
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) {
+    throw new Error(`[submodule] préflight HOT interrompu: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`[submodule] préflight HOT échoué (code ${result.status}).`);
+  }
+  console.log('[submodule] ✅ préflight HOT installer validé');
+}
+
 function ensureBotSubmodule() {
   if (!fs.existsSync(path.join(ROOT, '.gitmodules'))) {
     throw new Error('[submodule] .gitmodules absent : impossible de récupérer bot/.');
@@ -69,6 +93,7 @@ function ensureBotSubmodule() {
   }
 
   console.log(`[submodule] ✅ bot/ propre${sha ? ` @ ${sha}` : ''}`);
+  runHotInstallerPreflight();
 }
 
 if (require.main === module) ensureBotSubmodule();
