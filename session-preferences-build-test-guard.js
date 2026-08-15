@@ -17,10 +17,17 @@ if (!fs.existsSync(testFile)) {
 const source = `'use strict';
 // [SESSION PREFS BUILD TEST — NO MONGO]
 process.env.MONGODB_URI = '';
-const test = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+
+const watchdog = setTimeout(() => {
+  console.error('[session-preferences-test] ❌ watchdog 60s déclenché');
+  process.exit(124);
+}, 60_000);
+after(() => clearTimeout(watchdog));
+
 const ctx = require('../utils/sessionContext');
 const prefs = require('../utils/sessionPreferences');
 
@@ -94,4 +101,4 @@ if (syntax.status !== 0) {
   throw new Error(`[session-prefs-build-guard] syntaxe test invalide: ${syntax.stderr || syntax.stdout}`);
 }
 
-console.log('[session-prefs-build-guard] ✅ test session isolé de Mongo et rendu synchrone');
+console.log('[session-prefs-build-guard] ✅ test session isolé de Mongo, synchrone, watchdog 60s');
