@@ -6,3 +6,6 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+    buildFilter:
+      ignoredPaths:
+        - hot-releases/**
