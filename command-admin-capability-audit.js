@@ -56,7 +56,14 @@ for (const file of files) {
     continue;
   }
 
-  src = src.replace(/botAdminNeeded\s*:\s*true\b/g, 'botAdminNeeded: false // [CAPABILITY AUDIT] aucune opération WhatsApp exigeant bot-admin');
+  // IMPORTANT: la virgule doit rester AVANT le commentaire. Si on remplace
+  // seulement `true`, la virgule originale se retrouve après `//` et est
+  // commentée, ce qui casse l'objet de commande à la propriété suivante
+  // (souvent `async execute(...)`).
+  src = src.replace(
+    /botAdminNeeded\s*:\s*true\s*,?/g,
+    'botAdminNeeded: false, // [CAPABILITY AUDIT] aucune opération WhatsApp exigeant bot-admin'
+  );
   fs.writeFileSync(file, src, 'utf8');
 
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
