@@ -1,0 +1,49 @@
+name: Candidate Render build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  render-build:
+    name: Wrapper deployment guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout wrapper only
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify guarded bot revision
+        run: |
+          ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
+          EXPECTED="d836bae603d044bd40bc85a3e1d12a43adff8688"
+          echo "bot submodule: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Validate wrapper package and build guards
+        run: |
+          node -e "const p=require('./package.json'); if(!p.scripts?.preinstall || !p.scripts?.postinstall || !p.scripts?.start) process.exit(1); console.log('wrapper scripts OK')"
+          node --check ensure-bot-submodule.js
+          node --check verify-build-dependency-order.js
+          node --check fix-session-prep-guard.js
+          node --check defer-runtime-verifier-fix.js
+          node --check global-footer-patch.js
+          node --check session-isolation-prep.js
+          node --check session-isolation-patch.js
+          node --check session-isolation-finalize.js
+
+      - name: Confirm runtime-safe deployment policy
+        run: |
+          grep -q "install-hot-command-updater.js" package.json
+          grep -q "install-hot-oidc-auth.js" package.json
+          grep -q "test:hot-updater" package.json
+          echo "The deep Exaucee prestart verification is executed by the guarded bot commit during Render postinstall."
