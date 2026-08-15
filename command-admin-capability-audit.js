@@ -56,12 +56,14 @@ for (const file of files) {
     continue;
   }
 
-  // IMPORTANT: la virgule doit rester AVANT le commentaire. Si on remplace
-  // seulement `true`, la virgule originale se retrouve après `//` et est
-  // commentée, ce qui casse l'objet de commande à la propriété suivante
-  // (souvent `async execute(...)`).
+  // IMPORTANT :
+  // - la virgule est placée AVANT le commentaire afin de ne jamais être
+  //   avalée par `//` ;
+  // - seuls espaces/tabulations sont consommés, jamais un retour à la ligne,
+  //   pour préserver la structure de l'objet même si la propriété est la
+  //   dernière de son bloc.
   src = src.replace(
-    /botAdminNeeded\s*:\s*true\s*,?/g,
+    /botAdminNeeded[ \t]*:[ \t]*true[ \t]*,?/g,
     'botAdminNeeded: false, // [CAPABILITY AUDIT] aucune opération WhatsApp exigeant bot-admin'
   );
   fs.writeFileSync(file, src, 'utf8');
