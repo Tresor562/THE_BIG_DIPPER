@@ -47,17 +47,52 @@ copy('pair.js', 'commands/bot_sovereignty/pair.js');
 patch(
   'config.js',
   '      chatbot: false,\n      autosticker: false',
-  '      chatbot: false,\n      grouplevel: true, // [GROUP ENGAGEMENT DEFAULT] actif par défaut\n      coupleday: true,  // [GROUP ENGAGEMENT DEFAULT] actif par défaut\n      autosticker: false',
+  '      chatbot: false,\n      grouplevel: false, // [GROUP ENGAGEMENT DEFAULT] désactivé par défaut\n      coupleday: false,  // [GROUP ENGAGEMENT DEFAULT] désactivé par défaut\n      autosticker: false',
   '[GROUP ENGAGEMENT DEFAULT]',
-  'defaults grouplevel + coupleday'
+  'defaults grouplevel + coupleday OFF'
 );
 
+// Le système de niveau est réellement inactif tant qu’un admin ne fait pas
+// .grouplevel on : aucun compteur/LEVEL UP automatique n'est exécuté.
 patch(
   'handler.js',
   '    if (isGroup) addMessage(from, sender);',
-  `    if (isGroup) {\n      const _levelProgress = addMessage(from, sender);\n      if (_levelProgress?.leveledUp) {\n        require('./utils/groupEngagement')\n          .handleLevelProgress(sock, msg, _levelProgress) // [GROUP LEVEL PROGRESS]\n          .catch(err => console.warn('[grouplevel] notification:', err.message));\n      }\n    }`,
+  `    if (isGroup && database.getGroupSettings(from)?.grouplevel === true) {\n      const _levelProgress = addMessage(from, sender);\n      if (_levelProgress?.leveledUp) {\n        require('./utils/groupEngagement')\n          .handleLevelProgress(sock, msg, _levelProgress) // [GROUP LEVEL PROGRESS]\n          .catch(err => console.warn('[grouplevel] notification:', err.message));\n      }\n    }`,
   '[GROUP LEVEL PROGRESS]',
-  'level-up branché au compteur existant'
+  'level-up conditionné à grouplevel=true'
+);
+
+// Les états absents/anciens sont OFF, et non ON implicitement.
+patch(
+  'commands/group_management/grouplevel.js',
+  '      const enabled = settings?.grouplevel !== false;',
+  '      const enabled = settings?.grouplevel === true; // [GROUPLEVEL EXPLICIT ON]',
+  '[GROUPLEVEL EXPLICIT ON]',
+  'status GroupLevel explicite'
+);
+
+patch(
+  'commands/group_management/coupleday.js',
+  '    const enabled = settings?.coupleday !== false;',
+  '    const enabled = settings?.coupleday === true; // [COUPLEDAY EXPLICIT ON]',
+  '[COUPLEDAY EXPLICIT ON]',
+  'status CoupleDay explicite'
+);
+
+patch(
+  'utils/groupEngagement.js',
+  '  if (settings?.grouplevel === false) return false;',
+  '  if (settings?.grouplevel !== true) return false; // [GROUPLEVEL EXPLICIT ENABLE]',
+  '[GROUPLEVEL EXPLICIT ENABLE]',
+  'notifications niveau seulement si ON'
+);
+
+patch(
+  'utils/groupEngagement.js',
+  "  if (!options.force && settings?.coupleday === false) return { skipped: 'disabled' };",
+  "  if (!options.force && settings?.coupleday !== true) return { skipped: 'disabled' }; // [COUPLEDAY EXPLICIT ENABLE]",
+  '[COUPLEDAY EXPLICIT ENABLE]',
+  'tirage CoupleDay seulement si ON'
 );
 
 patch(
@@ -88,4 +123,4 @@ for (const rel of [
   'utils/sessionManager.js',
 ]) check(rel);
 
-console.log('[group-engagement] ✅ GroupLevel + CoupleDay + Pair UI installés');
+console.log('[group-engagement] ✅ GroupLevel + CoupleDay installés, OFF par défaut');
