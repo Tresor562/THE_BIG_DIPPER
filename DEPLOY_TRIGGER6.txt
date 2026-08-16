@@ -1,5 +1,4 @@
-Render deploy trigger — feature pack runtime v3 cumulative release
-Triggered: 2026-08-16 09:44 GMT+1
-Bot revision: 6fecd09359089c9989b1e8bcb58d08b6d4180e0c
-Wrapper revision before trigger: 20857613bfe5de426f05783092d761b30317fee9
-Reason: force a fresh Render auto-deploy event from a real main-branch content commit.
+Render deploy trigger — corrected feature-pack static guard v2
+Bot revision: 3ae0d9eaba5fe82324b033188406b5f91445bf80
+Wrapper revision before trigger: a00d491dc7d190344626fb3b6570868173d36639
+Reason: force a fresh Render auto-deploy after removing stale runtime-only newsletter invariants from the static guard.
