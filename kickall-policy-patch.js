@@ -60,13 +60,44 @@ if (resolutionStart !== -1 && resolutionEnd !== -1) {
   throw new Error('[kickall-policy] bloc de résolution JID introuvable');
 }
 
+// ── CONFIRMATION RÉELLE DES EXPULSIONS ────────────────────────────────────
+// Baileys groupParticipantsUpdate() ne lève pas forcément une exception quand
+// une partie d'un lot échoue : il retourne un tableau avec un status par JID.
+// L'ancienne commande incrémentait expelled de lot.length dès que la Promise
+// se résolvait, ce qui pouvait annoncer 40 expulsés alors que certains status
+// étaient 403/404/500. Désormais chaque succès doit être confirmé par status=200.
+const batchStartMarker = "      for (let i = 0; i < toKick.length; i += BATCH) {";
+const batchEndMarker = "\n      // ═══════════════════════════════════════════════════════\n      // ÉTAPE 12 : Invalider le cache";
+const batchStart = src.indexOf(batchStartMarker);
+const batchEnd = batchStart === -1 ? -1 : src.indexOf(batchEndMarker, batchStart);
+if (batchStart !== -1 && batchEnd !== -1 && !src.includes('[KICKALL CONFIRMED REMOVALS]')) {
+  const replacement = `      // [KICKALL CONFIRMED REMOVALS]\n      const statusCode = row => String(row?.status ?? row?.error ?? '');\n      const statusOk = row => statusCode(row) === '200';\n      const statusAlreadyGone = row => ['404', '406'].includes(statusCode(row));\n      let alreadyAbsent = 0;\n\n      async function removeOneConfirmed(jid) {\n        try {\n          const result = await sock.groupParticipantsUpdate(from, [jid], 'remove');\n          const row = Array.isArray(result) ? (result.find(r => r?.jid === jid) || result[0]) : null;\n          if (statusOk(row)) {\n            expelled++;\n            console.log(\`[kickall v8] ✅ Confirmé individuel : \${jid} | status=\${statusCode(row)}\`);\n            return true;\n          }\n          if (statusAlreadyGone(row)) {\n            alreadyAbsent++;\n            console.warn(\`[kickall v8] ⚠️ Déjà absent : \${jid} | status=\${statusCode(row)}\`);\n            return true;\n          }\n          failed++;\n          console.error(\`[kickall v8] ❌ Individuel non confirmé : \${jid} | status=\${statusCode(row) || 'inconnu'}\`);\n          return false;\n        } catch (indErr) {\n          const m = String(indErr?.message || indErr || '');\n          if (/not-a-participant|404|406/i.test(m)) {\n            alreadyAbsent++;\n            console.warn(\`[kickall v8] ⚠️ \${jid} déjà absent (\${m})\`);\n            return true;\n          }\n          failed++;\n          console.error(\`[kickall v8] ❌ \${jid} → \${m}\`);\n          return false;\n        }\n      }\n\n      for (let i = 0; i < toKick.length; i += BATCH) {\n        const lot = toKick.slice(i, i + BATCH);\n        let retry = [];\n\n        try {\n          const result = await sock.groupParticipantsUpdate(from, lot, 'remove');\n          const rows = Array.isArray(result) ? result : [];\n\n          if (!rows.length) {\n            // Pas de statuts exploitables = aucune confirmation. On retente\n            // individuellement au lieu de compter le lot comme réussi.\n            retry = [...lot];\n            console.warn(\`[kickall v8] ⚠️ Lot \${Math.floor(i / BATCH) + 1}: réponse sans statuts → confirmation individuelle\`);\n          } else {\n            for (let j = 0; j < lot.length; j++) {\n              const jid = lot[j];\n              const row = rows.find(r => r?.jid === jid) || rows[j] || null;\n              if (statusOk(row)) {\n                expelled++;\n                console.log(\`[kickall v8] ✅ Confirmé : \${jid} | status=\${statusCode(row)}\`);\n              } else if (statusAlreadyGone(row)) {\n                alreadyAbsent++;\n                console.warn(\`[kickall v8] ⚠️ Déjà absent : \${jid} | status=\${statusCode(row)}\`);\n              } else {\n                retry.push(jid);\n                console.warn(\`[kickall v8] ⚠️ Non confirmé en lot : \${jid} | status=\${statusCode(row) || 'inconnu'}\`);\n              }\n            }\n          }\n        } catch (batchErr) {\n          retry = [...lot];\n          console.warn(\`[kickall v8] ⚠️ Lot échoué (\${batchErr.message}) → confirmation individuelle\`);\n        }\n\n        for (const jid of retry) {\n          await removeOneConfirmed(jid);\n          await sleep(600);\n        }\n\n        console.log(\`[kickall v8] Lot \${Math.floor(i / BATCH) + 1} terminé | confirmés:\${expelled} | déjà absents:\${alreadyAbsent} | échecs:\${failed}\`);\n\n        if (i + BATCH < toKick.length) {\n          await sleep(PAUSE);\n        }\n      }\n`;
+  src = src.slice(0, batchStart) + replacement + src.slice(batchEnd);
+  console.log('[kickall-policy] confirmation status=200 des expulsions appliquée');
+} else if (!src.includes('[KICKALL CONFIRMED REMOVALS]')) {
+  throw new Error('[kickall-policy] bloc expulsions par lots introuvable');
+}
+
+// Enrichir le rapport final : le nombre "expulsés" correspond maintenant
+// exclusivement aux status 200 confirmés par WhatsApp/Baileys.
+if (src.includes('[KICKALL CONFIRMED REMOVALS]')) {
+  src = src.replace(
+    "console.log(`[kickall v8] ══ TERMINÉ ══ expulsés:${expelled} | échecs:${failed} | protégés:${skipped.length}`);",
+    "console.log(`[kickall v8] ══ TERMINÉ ══ expulsés confirmés:${expelled} | déjà absents:${alreadyAbsent} | échecs:${failed} | protégés:${skipped.length}`);"
+  );
+  src = src.replace(
+    "`┃ ✅ ${toSC('expulses')}   : ${expelled}\\n` +",
+    "`┃ ✅ ${toSC('expulses confirmes')} : ${expelled}\\n` +\n        (alreadyAbsent > 0 ? `┃ ↪️ ${toSC('deja absents')} : ${alreadyAbsent}\\n` : '') +"
+  );
+}
+
 // Adapter les libellés de diagnostic pour refléter la nouvelle politique.
 src = src
   .replace('Owners/sudo exclus  :', 'Owners exclus       :')
   .replace("raison: 'owner/sudo bot'", "raison: 'owner bot'");
 
 fs.writeFileSync(file, src);
-console.log('[kickall-policy] ✅ kickall: admins + owners préservés, sudo expulsables');
+console.log('[kickall-policy] ✅ kickall: admins + owners préservés, sudo expulsables, résultats confirmés');
 
 // ── OWNER DE LA SESSION APPARIÉE : commandes fromMe ──────────────────────
 // Sur Baileys multi-device, un message envoyé depuis le téléphone auquel la
@@ -87,12 +118,21 @@ if (manager.includes(listenerOld)) {
   throw new Error('[kickall-policy] listener messages.upsert sous-session introuvable');
 }
 
+// Cibler la boucle DU listener principal seulement. Une ancienne version du
+// patch utilisait un replace global et pouvait toucher le listener de stockage
+// (qui ne possède pas de variable `type`).
+const principalPos = manager.indexOf(listenerNew);
 const loopOld = "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;";
-const loopNew = "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;\n      // append est réservé aux messages envoyés depuis le compte connecté;\n      // ignorer les append entrants pour éviter un double traitement.\n      if (type === 'append' && !msg.key.fromMe) continue;";
-if (manager.includes(loopOld)) {
-  manager = manager.replace(loopOld, loopNew);
-  console.log('[kickall-policy] sous-session: doublons append non-fromMe filtrés');
-} else if (!manager.includes("if (type === 'append' && !msg.key.fromMe) continue;")) {
+const appendGuard = "      // append est réservé aux messages envoyés depuis le compte connecté;\n      // ignorer les append entrants pour éviter un double traitement.\n      if (type === 'append' && !msg.key.fromMe) continue;";
+const loopPos = principalPos === -1 ? -1 : manager.indexOf(loopOld, principalPos);
+if (loopPos !== -1) {
+  const probe = manager.slice(loopPos, loopPos + loopOld.length + appendGuard.length + 64);
+  if (!probe.includes("type === 'append' && !msg.key.fromMe")) {
+    const loopNew = `${loopOld}\n${appendGuard}`;
+    manager = manager.slice(0, loopPos) + loopNew + manager.slice(loopPos + loopOld.length);
+    console.log('[kickall-policy] sous-session: doublons append non-fromMe filtrés au bon listener');
+  }
+} else if (!manager.includes("type === 'append' && !msg.key.fromMe")) {
   throw new Error('[kickall-policy] boucle messages sous-session introuvable');
 }
 
@@ -113,4 +153,4 @@ for (const checkedFile of [file, sessionManagerFile]) {
   }
 }
 
-console.log('[kickall-policy] ✅ owner de session appariée: .kickall atteint le handler en notify ou append/fromMe');
+console.log('[kickall-policy] ✅ owner de session appariée: commandes atteignent le handler en notify ou append/fromMe');
