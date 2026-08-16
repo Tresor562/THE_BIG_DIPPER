@@ -2,9 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const BOT = path.join(__dirname, 'bot');
 const file = path.join(BOT, 'commands', 'group_guardians', 'kickall.js');
+const sessionManagerFile = path.join(BOT, 'utils', 'sessionManager.js');
 if (!fs.existsSync(file)) throw new Error('[kickall-policy] kickall.js introuvable');
 
 let src = fs.readFileSync(file, 'utf8');
@@ -65,3 +67,50 @@ src = src
 
 fs.writeFileSync(file, src);
 console.log('[kickall-policy] ✅ kickall: admins + owners préservés, sudo expulsables');
+
+// ── OWNER DE LA SESSION APPARIÉE : commandes fromMe ──────────────────────
+// Sur Baileys multi-device, un message envoyé depuis le téléphone auquel la
+// session est connectée peut arriver en `messages.upsert` avec type="append"
+// et fromMe=true. Le bot principal accepte déjà ce cas dans index.js, mais le
+// SessionManager multi-session n'acceptait que `notify` : le propriétaire de
+// la session pouvait donc taper .kickall et être ignoré avant même le handler.
+// On aligne ici les sous-sessions sur le comportement du bot principal.
+if (!fs.existsSync(sessionManagerFile)) throw new Error('[kickall-policy] utils/sessionManager.js introuvable');
+let manager = fs.readFileSync(sessionManagerFile, 'utf8');
+
+const listenerOld = "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify') return;";
+const listenerNew = "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify' && type !== 'append') return;";
+if (manager.includes(listenerOld)) {
+  manager = manager.replace(listenerOld, listenerNew);
+  console.log('[kickall-policy] sous-session: messages append/fromMe autorisés');
+} else if (!manager.includes(listenerNew)) {
+  throw new Error('[kickall-policy] listener messages.upsert sous-session introuvable');
+}
+
+const loopOld = "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;";
+const loopNew = "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;\n      // append est réservé aux messages envoyés depuis le compte connecté;\n      // ignorer les append entrants pour éviter un double traitement.\n      if (type === 'append' && !msg.key.fromMe) continue;";
+if (manager.includes(loopOld)) {
+  manager = manager.replace(loopOld, loopNew);
+  console.log('[kickall-policy] sous-session: doublons append non-fromMe filtrés');
+} else if (!manager.includes("if (type === 'append' && !msg.key.fromMe) continue;")) {
+  throw new Error('[kickall-policy] boucle messages sous-session introuvable');
+}
+
+fs.writeFileSync(sessionManagerFile, manager, 'utf8');
+
+const finalManager = fs.readFileSync(sessionManagerFile, 'utf8');
+if (!finalManager.includes("type !== 'notify' && type !== 'append'")) {
+  throw new Error('[kickall-policy] garde append/fromMe absente après patch');
+}
+if (!finalManager.includes("type === 'append' && !msg.key.fromMe")) {
+  throw new Error('[kickall-policy] filtre append non-fromMe absent après patch');
+}
+
+for (const checkedFile of [file, sessionManagerFile]) {
+  const check = spawnSync(process.execPath, ['--check', checkedFile], { encoding: 'utf8' });
+  if (check.status !== 0) {
+    throw new Error(`[kickall-policy] syntaxe invalide ${path.relative(BOT, checkedFile)}: ${check.stderr || check.stdout}`);
+  }
+}
+
+console.log('[kickall-policy] ✅ owner de session appariée: .kickall atteint le handler en notify ou append/fromMe');
