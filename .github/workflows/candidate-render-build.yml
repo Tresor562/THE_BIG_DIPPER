@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="e6c566ac4f2cfdd75a805ef72e7fb3399848c0bc"
+          EXPECTED="a291b6aae87157d8ce4dff27892860821278a583"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -46,4 +46,4 @@ jobs:
           grep -q "install-hot-command-updater.js" package.json
           grep -q "install-hot-oidc-auth.js" package.json
           grep -q "test:hot-updater" package.json
-          echo "Exaucee runtime guards remain blocking; cognition installer uses stable runtime boundaries instead of stale exact message blocks; quality tests remain observable and optionally strict."
+          echo "Exaucee runtime guards remain blocking; cognition and social-context installers use resilient anchors compatible with the evolved cognitive prompt; quality tests remain observable and optionally strict."
