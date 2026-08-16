@@ -76,7 +76,13 @@ if (/terminalDisconnect[\s\S]{0,260}DisconnectReason\.(connectionReplaced|badSes
 if (!session.includes("type !== 'notify' && type !== 'append'")) {
   throw new Error('[session-uptime-verify] multi-session ne traite pas append');
 }
-if (!session.includes("type === 'append' && !msg.key?.fromMe")) {
+
+// Le filtre peut être installé par plusieurs patches compatibles. Selon celui
+// qui passe en premier, il est écrit avec msg.key.fromMe ou msg.key?.fromMe.
+// Les deux formes sont fonctionnellement équivalentes ici car msg.key est déjà
+// validé dans la boucle. Ne pas faire échouer le build sur ce détail lexical.
+const appendFromMeFilter = /type\s*===\s*['"]append['"]\s*&&\s*!msg\.key\??\.fromMe/;
+if (!appendFromMeFilter.test(session)) {
   throw new Error('[session-uptime-verify] filtre append/fromMe absent');
 }
 
