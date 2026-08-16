@@ -23,17 +23,12 @@ function requireInvariant(source, needle, label) {
   if (!source.includes(needle)) throw new Error(`[owner-command-audit] invariant absent: ${label}`);
 }
 
-// Bot principal : les commandes envoyées depuis le téléphone connecté peuvent
-// arriver en notify ou append/fromMe.
 requireInvariant(index, "type !== 'notify' && type !== 'append'", 'index accepte notify + append');
-requireInvariant(index, "type === 'append' && !msg.key.fromMe", 'index filtre seulement append non-fromMe');
-
-// Sous-sessions appairées : même garantie.
+requireInvariant(index, "type === 'append' && !msg.key.fromMe", 'index filtre append non-fromMe');
 requireInvariant(sessionManager, "type !== 'notify' && type !== 'append'", 'sessionManager accepte notify + append');
-requireInvariant(sessionManager, "type === 'append' && !msg.key.fromMe", 'sessionManager filtre seulement append non-fromMe');
+requireInvariant(sessionManager, "type === 'append' && !msg.key.fromMe", 'sessionManager filtre append non-fromMe');
 requireInvariant(sessionManager, 'sock._sessionPhoneNumber', 'numéro owner local injecté dans la sous-session');
 
-// Handler commun à toutes les commandes.
 requireInvariant(handler, 'const _isSessionOwner', 'détection owner local de session');
 requireInvariant(handler, 'msg.key.fromMe || _isSessionOwner', 'fromMe/owner local inclus dans isMe');
 requireInvariant(handler, 'isOwner:        isMe', 'buildExtra transmet isOwner=true');
@@ -52,6 +47,12 @@ function listJs(dir) {
   return out;
 }
 
+function executeBlocksFromMe(executeFn) {
+  const source = Function.prototype.toString.call(executeFn);
+  return /if\s*\(\s*(?:msg\??\.key\??\.)?fromMe\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source) ||
+    /if\s*\(\s*msg\??\.key\??\.fromMe\s*===\s*true\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source);
+}
+
 const files = listJs(commandsDir);
 const commands = [];
 const loadErrors = [];
@@ -65,14 +66,6 @@ for (const file of files) {
     continue;
   }
 
-  const source = fs.readFileSync(file, 'utf8');
-  // Une commande qui retourne explicitement parce que le message est fromMe
-  // empêcherait précisément le propriétaire du compte connecté de l'utiliser.
-  if (/if\s*\(\s*(?:msg\??\.key\??\.)?fromMe\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source) ||
-      /if\s*\(\s*msg\??\.key\??\.fromMe\s*===\s*true\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source)) {
-    ownerSelfBlockers.push(rel);
-  }
-
   let exported;
   try {
     delete require.cache[require.resolve(file)];
@@ -84,6 +77,13 @@ for (const file of files) {
 
   for (const command of (Array.isArray(exported) ? exported : [exported])) {
     if (!command || typeof command !== 'object' || !command.name || typeof command.execute !== 'function') continue;
+
+    // Ne tester que la vraie exécution de commande. Un helper peut légitimement
+    // ignorer fromMe (ex: cacheMessage d'antidelete) sans bloquer la commande.
+    if (executeBlocksFromMe(command.execute)) {
+      ownerSelfBlockers.push(`${rel}#${command.name}`);
+    }
+
     commands.push({
       name: String(command.name),
       file: rel,
@@ -133,9 +133,9 @@ console.log('[owner-command-audit] ✅ isMe/isOwner propagé + watchdog anti-sil
 
 if (ownerSelfBlockers.length) {
   throw new Error(
-    `[owner-command-audit] ${ownerSelfBlockers.length} commande(s) bloquent encore explicitement fromMe: ${ownerSelfBlockers.join(', ')}`
+    `[owner-command-audit] ${ownerSelfBlockers.length} commande(s) bloquent encore explicitement fromMe dans execute(): ${ownerSelfBlockers.join(', ')}`
   );
 }
 
-console.log('[owner-command-audit] ✅ aucun return direct fromMe détecté dans les modules de commandes');
+console.log('[owner-command-audit] ✅ aucune fonction execute() ne bloque explicitement fromMe');
 console.log('[owner-command-audit] ✅ audit bloquant réussi : le build s’arrête si une commande perd le chemin de réponse owner connecté');
