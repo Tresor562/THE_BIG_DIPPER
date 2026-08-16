@@ -205,12 +205,13 @@ async function _pairLegacy(sock, msg, extra, cleanNumber) {
 
 async function _pairViaService(sock, msg, extra, cleanNumber) {
   const { createPairingSession, PairingError } = require('../../utils/pairingService');
+  const { sender, from } = extra;
 
   await extra.reply(styled('wait', 'PAIR', `Création de la session pour +${cleanNumber}…`));
 
   try {
     const { pairingCode, reconnected } = await createPairingSession(cleanNumber, {
-      requesterKey: extra.sender || extra.from,
+      requesterKey: sender || from,
     });
 
     if (reconnected) {
