@@ -3,9 +3,12 @@
 /**
  * .pair — self-service pairing with native copy-code + website button.
  * Pairing/session creation remains delegated to utils/pairingService.js.
+ * Presentation follows the active response style (0..20).
  */
 
 const config = require('../../config');
+const styleManager = require('../../utils/styleManager');
+const { renderResponse, getProfile, separatorFor } = require('../../utils/responseStyle');
 const {
   proto,
   generateWAMessageFromContent,
@@ -22,10 +25,42 @@ function withTimeout(promise, ms, label) {
 }
 
 function safeErrMsg(err) {
-  if (!err) return 'ᴇʀʀᴇᴜʀ ɪɴᴄᴏɴɴᴜᴇ';
+  if (!err) return 'Erreur inconnue';
   if (typeof err === 'string') return err;
   if (err.message) return err.message;
   try { return JSON.stringify(err); } catch { return String(err); }
+}
+
+function activeStyle() {
+  return Number(styleManager.getStyle()) || 0;
+}
+
+function styled(type, title, body, details = '') {
+  return renderResponse({
+    type,
+    title,
+    body,
+    details,
+    footer: false,
+    style: activeStyle(),
+  });
+}
+
+function codeBody(code, cleanNumber) {
+  const style = activeStyle();
+  const profile = getProfile(style);
+  return [
+    `${profile.accent} *${code}*`,
+    separatorFor(style),
+    `📱 Numéro : +${cleanNumber}`,
+    '',
+    '1. Ouvre WhatsApp',
+    '2. Paramètres → Appareils connectés',
+    '3. Connecter avec un numéro',
+    '4. Entre le code affiché ci-dessus',
+    '',
+    '⚠️ Le code expire après quelques minutes.',
+  ].join('\n');
 }
 
 function buildBizNodes(jid) {
@@ -62,7 +97,7 @@ function pairNewsletterContext() {
     externalAdReply: {
       showAdAttribution: false,
       title: 'THE BIG DIPPER • CONNEXION',
-      body: 'Code de connexion WhatsApp',
+      body: `Code de connexion • style ${activeStyle()}`,
       mediaType: 1,
       sourceUrl: BOT_URL,
       mediaUrl: BOT_URL,
@@ -71,20 +106,10 @@ function pairNewsletterContext() {
   };
 }
 
-async function sendPairCodeCard(sock, jid, msg, code, cleanNumber, footer) {
+async function sendPairCodeCard(sock, jid, msg, code, cleanNumber) {
   const displayCode = String(code || '').trim();
   const copyCode = displayCode.replace(/[^0-9A-Za-z]/g, '') || displayCode;
-  const body =
-    `╭━≪• *🔑 ᴄᴏᴅᴇ ᴅᴇ ᴄᴏɴɴᴇxɪᴏɴ* •≫━╾╮\n` +
-    `┃\n┃  *${displayCode}*\n┃\n` +
-    `╰━━━━━━━━━━━━━━━━━━━╯\n\n` +
-    `📱 *ɴᴜᴍᴇ́ʀᴏ :* +${cleanNumber}\n\n` +
-    `📱 *ᴇ́ᴛᴀᴘᴇs :*\n` +
-    `*1.* Ouvre WhatsApp\n` +
-    `*2.* ⚙️ Paramètres → Appareils connectés\n` +
-    `*3.* Connecter avec un numéro\n` +
-    `*4.* Entre le code ci-dessus\n\n` +
-    `⚠️ *Ce code expire en quelques minutes.*\n\n${footer}`;
+  const body = styled('success', 'CODE DE CONNEXION', codeBody(displayCode, cleanNumber));
 
   const interactiveMessage = proto.Message.InteractiveMessage.create({
     body: proto.Message.InteractiveMessage.Body.create({ text: body }),
@@ -120,6 +145,7 @@ async function sendPairCodeCard(sock, jid, msg, code, cleanNumber, footer) {
     { interactiveMessage },
     { quoted: msg, userJid: sock.user?.id }
   );
+
   try {
     await sock.relayMessage(jid, generated.message, {
       messageId: generated.key.id,
@@ -139,91 +165,76 @@ module.exports = {
   name: 'pair',
   aliases: ['paircode', 'connexion', 'connect', 'newsession', 'addsession'],
   category: '🛠️ Outils généraux',
-  description: 'Crée une nouvelle session WhatsApp (self-service).',
+  description: 'Crée une nouvelle session WhatsApp en self-service, avec présentation adaptée au style actif.',
   usage: `${prefix}pair +22912345678`,
   groupOnly: false,
   adminOnly: false,
   botAdminNeeded: false,
 
   async execute(sock, msg, args, extra) {
-    const { reply, from } = extra;
     const rawNumber = args[0];
     if (!rawNumber) {
-      return reply(
-        `*〆 ɪɴᴅɪǫᴜᴇ ᴜɴ ɴᴜᴍᴇ́ʀᴏ !*\n\n` +
-        `*📌 ᴜsᴀɢᴇ :* \`${prefix}pair +22912345678\`\n\n` +
-        extra.phrases.footer()
-      );
+      return extra.reply(styled('usage', 'PAIR', `Usage : ${prefix}pair +22912345678`));
     }
 
     const cleanNumber = String(rawNumber).replace(/\D/g, '');
     if (cleanNumber.length < 7 || cleanNumber.length > 15) {
-      return reply(
-        `*〆 ɴᴜᴍᴇ́ʀᴏ ɪɴᴠᴀʟɪᴅᴇ !*\n` +
-        `*ᴇxᴇᴍᴘʟᴇ :* \`${prefix}pair +22912345678\`\n\n` +
-        extra.phrases.footer()
-      );
+      return extra.reply(styled('error', 'PAIR', 'Numéro invalide.', `Exemple : ${prefix}pair +22912345678`));
     }
 
     if (!process.env.MONGODB_URI) return _pairLegacy(sock, msg, extra, cleanNumber);
-    return _pairViaService(sock, msg, extra, cleanNumber, from);
+    return _pairViaService(sock, msg, extra, cleanNumber);
   },
 };
 
 async function _pairLegacy(sock, msg, extra, cleanNumber) {
-  const { reply, from } = extra;
   if (typeof sock?.requestPairingCode !== 'function') {
-    return reply(`*❌ ᴍᴇ́ᴛʜᴏᴅᴇ ɴᴏɴ ᴅɪsᴘᴏɴɪʙʟᴇ — ʙᴏᴛ ᴘᴀs ᴘʀᴇ̂ᴛ.*\n\n${extra.phrases.footer()}`);
+    return extra.reply(styled('error', 'PAIR', 'Méthode de pairing indisponible : le socket n’est pas prêt.'));
   }
 
-  await reply(`*⏳ ɢᴇ́ɴᴇ́ʀᴀᴛɪᴏɴ ᴇɴ ᴄᴏᴜʀs...*\n*📱 +${cleanNumber}*\n\n${extra.phrases.footer()}`);
+  await extra.reply(styled('wait', 'PAIR', `Génération du code pour +${cleanNumber}…`));
   try {
     const raw = await withTimeout(sock.requestPairingCode(cleanNumber), 20000, 'requestPairingCode');
     const code = String(raw || '').match(/.{1,4}/g)?.join('-') || String(raw || '????-????');
-    return await sendPairCodeCard(sock, from, msg, code, cleanNumber, extra.phrases.footer());
+    return sendPairCodeCard(sock, extra.from, msg, code, cleanNumber);
   } catch (err) {
     console.error('[pair legacy]', safeErrMsg(err));
-    return reply(`*❌ ᴇ́ᴄʜᴇᴄ :* ${safeErrMsg(err)}\n\n${extra.phrases.footer()}`);
+    return extra.reply(styled('error', 'PAIR', safeErrMsg(err)));
   }
 }
 
-async function _pairViaService(sock, msg, extra, cleanNumber, from) {
-  const { reply, sender } = extra;
+async function _pairViaService(sock, msg, extra, cleanNumber) {
   const { createPairingSession, PairingError } = require('../../utils/pairingService');
 
-  await reply(
-    `*⏳ ᴄʀᴇ́ᴀᴛɪᴏɴ ᴅᴇ ʟᴀ sᴇssɪᴏɴ ᴇɴ ᴄᴏᴜʀs...*\n` +
-    `*📱 ɴᴜᴍᴇ́ʀᴏ :* +${cleanNumber}\n\n${extra.phrases.footer()}`
-  );
+  await extra.reply(styled('wait', 'PAIR', `Création de la session pour +${cleanNumber}…`));
 
   try {
     const { pairingCode, reconnected } = await createPairingSession(cleanNumber, {
-      requesterKey: sender || from,
+      requesterKey: extra.sender || extra.from,
     });
 
     if (reconnected) {
-      return reply(
-        `╭━≪• *🔄 sᴇssɪᴏɴ ʀᴇᴄᴏɴɴᴇᴄᴛᴇ́ᴇ* •≫━╾╮\n` +
-        `┃\n┃ 📱 +${cleanNumber}\n` +
-        `┃ ✅ Ce numéro était déjà appairé : reconnexion avec les identifiants existants.\n` +
-        `┃\n╰━━━━━━━━━━━━━━━━━╯\n\n${extra.phrases.footer()}`
-      );
+      return extra.reply(styled(
+        'success',
+        'SESSION RECONNECTÉE',
+        `📱 +${cleanNumber}\n\nCette session existait déjà. Les identifiants sauvegardés ont été réutilisés.`
+      ));
     }
 
-    return await sendPairCodeCard(sock, from, msg, pairingCode, cleanNumber, extra.phrases.footer());
+    return sendPairCodeCard(sock, extra.from, msg, pairingCode, cleanNumber);
   } catch (err) {
     console.error('[pair multi] error:', err.message);
     if (err instanceof PairingError) {
       const messages = {
-        NO_MONGODB: '*❌ MongoDB non configuré.*',
-        DB_UNAVAILABLE: '*❌ Connexion à la base de données impossible. Réessaie dans un instant.*',
-        INVALID_NUMBER: '*❌ Numéro invalide.*',
-        COOLDOWN: `*⏳ ${err.message}*`,
-        ALREADY_ACTIVE: `*⚠️ ${err.message}*`,
-        CODE_FAILED: `*❌ Échec de génération du code :* ${err.message}`,
+        NO_MONGODB: 'MongoDB non configuré.',
+        DB_UNAVAILABLE: 'Connexion à la base de données impossible. Réessaie dans un instant.',
+        INVALID_NUMBER: 'Numéro invalide.',
+        COOLDOWN: err.message,
+        ALREADY_ACTIVE: err.message,
+        CODE_FAILED: `Échec de génération du code : ${err.message}`,
       };
-      return reply(`${messages[err.code] || `*❌ ${err.message}*`}\n\n${extra.phrases.footer()}`);
+      return extra.reply(styled(err.code === 'COOLDOWN' ? 'warning' : 'error', 'PAIR', messages[err.code] || err.message));
     }
-    return reply(`*❌ ᴇ́ᴄʜᴇᴄ ᴄʀᴇ́ᴀᴛɪᴏɴ sᴇssɪᴏɴ :*\n${safeErrMsg(err)}\n\n${extra.phrases.footer()}`);
+    return extra.reply(styled('error', 'PAIR', safeErrMsg(err)));
   }
 }
