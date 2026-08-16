@@ -12,6 +12,11 @@ const installers = [
   'scripts/install-feature-pack-runtime.js',
 ];
 
+function tail(text, max = 7000) {
+  const value = String(text || '').trim();
+  return value.length > max ? value.slice(-max) : value;
+}
+
 for (const rel of installers) {
   const file = path.join(BOT, rel);
   if (!fs.existsSync(file)) throw new Error(`[feature-pack-deploy] installateur absent: ${rel}`);
@@ -19,7 +24,10 @@ for (const rel of installers) {
   if (run.stdout) process.stdout.write(run.stdout);
   if (run.stderr) process.stderr.write(run.stderr);
   if (run.error) throw new Error(`[feature-pack-deploy] ${rel}: ${run.error.message}`);
-  if (run.status !== 0) throw new Error(`[feature-pack-deploy] ${rel} a échoué (${run.status})`);
+  if (run.status !== 0) {
+    const details = tail([run.stderr, run.stdout].filter(Boolean).join('\n'));
+    throw new Error(`[feature-pack-deploy] ${rel} a échoué (${run.status})${details ? `\n--- détail enfant ---\n${details}` : ''}`);
+  }
 }
 
 const staticGuard = path.join(BOT, 'scripts', 'verify-feature-pack-static.js');
@@ -28,7 +36,10 @@ const guardRun = spawnSync(process.execPath, [staticGuard], { cwd: BOT, encoding
 if (guardRun.stdout) process.stdout.write(guardRun.stdout);
 if (guardRun.stderr) process.stderr.write(guardRun.stderr);
 if (guardRun.error) throw new Error('[feature-pack-deploy] garde statique interrompu: ' + guardRun.error.message);
-if (guardRun.status !== 0) throw new Error('[feature-pack-deploy] garde statique échoué (' + guardRun.status + ')');
+if (guardRun.status !== 0) {
+  const details = tail([guardRun.stderr, guardRun.stdout].filter(Boolean).join('\n'));
+  throw new Error(`[feature-pack-deploy] garde statique échoué (${guardRun.status})${details ? `\n--- détail garde ---\n${details}` : ''}`);
+}
 
 const checks = [
   'utils/specialPresentation.js', 'utils/interactiveCarousel.js', 'utils/connectionPresentation.js', 'utils/featurePackRuntime.js',
@@ -63,8 +74,11 @@ if (!handler.includes('[WELCOME TARGETED CONNECTION FOOTER]') || !handler.includ
 if (!anime.includes('[ANIME MULTI CAROUSEL 2026-08-16]')) throw new Error('[feature-pack-deploy] carrousel anime non installé');
 if (!responseStyle.includes('[STYLE COMPACT SEPARATORS 2026-08-16]')) throw new Error('[feature-pack-deploy] séparateurs styles non installés');
 if (helper.includes("'pair', 'sessions'") || helper.includes("'repere', 'repère'")) throw new Error('[feature-pack-deploy] footer connexion encore global');
-if (handler.indexOf('[FEATURE PACK 2026-08-16 RUNTIME]') > handler.indexOf('if (!isCommand) return;')) {
-  throw new Error('[feature-pack-deploy] @all est branché trop tard dans le pipeline');
+
+const groupPos = handler.indexOf('[FEATURE PACK 2026-08-16 RUNTIME]');
+const firstNonCommandReturn = handler.indexOf('if (!isCommand) return;');
+if (groupPos < 0 || (firstNonCommandReturn >= 0 && groupPos > firstNonCommandReturn)) {
+  throw new Error(`[feature-pack-deploy] @all est branché trop tard (group=${groupPos}, firstReturn=${firstNonCommandReturn})`);
 }
 
 console.log('[feature-pack-deploy] ✅ pack validé : footer ciblé, styles, @all, présence, protections et carrousels');
