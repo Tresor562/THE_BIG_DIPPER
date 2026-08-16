@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="3ae0d9eaba5fe82324b033188406b5f91445bf80"
+          EXPECTED="4fe7482483a4769161e63334a64ec50badf77889"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -46,4 +46,4 @@ jobs:
           grep -q "install-hot-command-updater.js" package.json
           grep -q "install-hot-oidc-auth.js" package.json
           grep -q "test:hot-updater" package.json
-          echo "Deep Exaucee cognitive x5 + research v2 + dynamic workflows v2 + Mega GameMaster preflight runs inside guarded bot commit during Render postinstall."
+          echo "Exaucee runtime guards remain blocking; quality tests are reported during Render preflight and can be made strict with EXAUCEE_TESTS_STRICT=1."
