@@ -1,1 +1,3 @@
-Final hardened Exaucee trigger
+Render deploy trigger — feature pack + Exaucee cumulative release
+Triggered: 2026-08-16 08:37 GMT+1
+Bot revision: 8512af1d532f71b12905d0ee9aad2fd069b0ea6f
