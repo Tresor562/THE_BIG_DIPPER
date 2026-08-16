@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = 'eadf4a6c87bfdee668bab2e80e6c9dd47f040aca';
+const TARGET_BOT_SHA = '61e2ad5ee8e70b06252f8553cbc495a11b854e04';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
@@ -35,16 +35,11 @@ function ensureBotSubmodule() {
   runGit(['submodule','sync','--recursive'],'git submodule sync');
   runGit(['submodule','update','--init','--recursive','--force'],'git submodule update --force');
   if (!fs.existsSync(HANDLER)) throw new Error('[submodule] bot/handler.js absent après git submodule update.');
-
-  // Render réécrit parfois origin en URL interne avec identifiants temporaires.
-  // Ne jamais reconstruire l'URL GitHub à la main : le submodule update vient
-  // déjà d'authentifier le dépôt privé. On utilise donc son origin existant.
   console.log(`[submodule] ciblage explicite DIPPER- @ ${TARGET_BOT_SHA.slice(0,12)} via origin authentifié...`);
   runGit(['fetch','--no-tags','origin',TARGET_BOT_SHA],'git fetch révision bot',BOT);
   runGit(['checkout','--detach','--force','FETCH_HEAD'],'git checkout révision bot',BOT);
   runGit(['reset','--hard','FETCH_HEAD'],'git reset révision bot',BOT);
   runGit(['clean','-fd'],'git clean bot',BOT);
-
   const rev=spawnSync('git',['rev-parse','HEAD'],{cwd:BOT,encoding:'utf8'});
   const fullSha=rev.status===0?String(rev.stdout||'').trim():'';
   if(fullSha!==TARGET_BOT_SHA) throw new Error(`[submodule] mauvaise révision bot après checkout: ${fullSha||'inconnue'} (attendue ${TARGET_BOT_SHA})`);
