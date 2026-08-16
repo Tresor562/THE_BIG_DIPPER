@@ -60,7 +60,11 @@ const ownerSelfBlockers = [];
 
 for (const file of files) {
   const rel = path.relative(BOT, file).replace(/\\/g, '/');
-  const syntax = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+  const syntax = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8', timeout: 15000 });
+  if (syntax.error) {
+    loadErrors.push(`${rel}: verification syntaxe impossible (${syntax.error.message})`);
+    continue;
+  }
   if (syntax.status !== 0) {
     loadErrors.push(`${rel}: syntaxe invalide`);
     continue;
@@ -78,8 +82,8 @@ for (const file of files) {
   for (const command of (Array.isArray(exported) ? exported : [exported])) {
     if (!command || typeof command !== 'object' || !command.name || typeof command.execute !== 'function') continue;
 
-    // Ne tester que la vraie exécution de commande. Un helper peut légitimement
-    // ignorer fromMe (ex: cacheMessage d'antidelete) sans bloquer la commande.
+    // Ne tester que execute(). Un helper comme cacheMessage() d'antidelete peut
+    // légitimement ignorer fromMe sans empêcher la commande de répondre.
     if (executeBlocksFromMe(command.execute)) {
       ownerSelfBlockers.push(`${rel}#${command.name}`);
     }
@@ -139,3 +143,8 @@ if (ownerSelfBlockers.length) {
 
 console.log('[owner-command-audit] ✅ aucune fonction execute() ne bloque explicitement fromMe');
 console.log('[owner-command-audit] ✅ audit bloquant réussi : le build s’arrête si une commande perd le chemin de réponse owner connecté');
+
+// Plusieurs modules de commandes installent des timers lors de require(). Une
+// fois l'audit terminé, ces timers ne doivent pas retenir le processus jusqu'au
+// timeout de response-style-patch.js.
+process.exit(0);
