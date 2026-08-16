@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="3240cda058bb6b8e0149298e267b22af2750820b"
+          EXPECTED="b68fc2792de9eabbaa883b19d20fe3c7ca451e14"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -52,4 +52,5 @@ jobs:
           grep -q "KICKALL CONFIRMED REMOVALS" kickall-policy-patch.js
           grep -q "LATE CONNECTED OWNER AUDIT" response-style-patch.js
           grep -q "NO SILENT noReply" verify-connected-owner-command-path.js
+          grep -q "process.exit(0)" verify-connected-owner-command-path.js
           echo "Runtime guards, confirmed kickall results, paired-owner routing and final anti-silence audit are wired into the deployment wrapper."
