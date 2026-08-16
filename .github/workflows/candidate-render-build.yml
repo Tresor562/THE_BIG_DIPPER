@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="a291b6aae87157d8ce4dff27892860821278a583"
+          EXPECTED="f83528d1ba83b800780478dee4497ff9a23ee170"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -40,10 +40,16 @@ jobs:
           node --check session-isolation-prep.js
           node --check session-isolation-patch.js
           node --check session-isolation-finalize.js
+          node --check kickall-policy-patch.js
+          node --check response-style-patch.js
+          node --check verify-connected-owner-command-path.js
 
       - name: Confirm runtime-safe deployment policy
         run: |
           grep -q "install-hot-command-updater.js" package.json
           grep -q "install-hot-oidc-auth.js" package.json
           grep -q "test:hot-updater" package.json
-          echo "Exaucee runtime guards remain blocking; cognition and social-context installers use resilient anchors compatible with the evolved cognitive prompt; quality tests remain observable and optionally strict."
+          grep -q "KICKALL CONFIRMED REMOVALS" kickall-policy-patch.js
+          grep -q "LATE CONNECTED OWNER AUDIT" response-style-patch.js
+          grep -q "NO SILENT noReply" verify-connected-owner-command-path.js
+          echo "Runtime guards, confirmed kickall results, paired-owner routing and final anti-silence audit are wired into the deployment wrapper."
