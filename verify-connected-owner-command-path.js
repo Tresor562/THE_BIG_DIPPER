@@ -66,8 +66,8 @@ for (const file of files) {
   }
 
   const source = fs.readFileSync(file, 'utf8');
-  // Un return direct sur fromMe à l'intérieur d'un module de commande est
-  // suspect pour le compte connecté. On le remonte explicitement dans l'audit.
+  // Une commande qui retourne explicitement parce que le message est fromMe
+  // empêcherait précisément le propriétaire du compte connecté de l'utiliser.
   if (/if\s*\(\s*(?:msg\??\.key\??\.)?fromMe\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source) ||
       /if\s*\(\s*msg\??\.key\??\.fromMe\s*===\s*true\s*\)\s*(?:return\b|\{\s*return\b)/m.test(source)) {
     ownerSelfBlockers.push(rel);
@@ -107,11 +107,13 @@ const duplicateNames = commands
   .filter((name, i, arr) => arr.indexOf(name) !== i);
 if (duplicateNames.length) throw new Error('[owner-command-audit] noms canoniques dupliqués: ' + [...new Set(duplicateNames)].join(', '));
 
+const aliasCount = commands.reduce((sum, command) => sum + command.aliases.length, 0);
 const report = {
   generatedAt: new Date().toISOString(),
   commandFiles: files.length,
   commandCount: commands.length,
   canonicalCount: canonical.size,
+  aliasCount,
   connectedOwnerPath: {
     mainNotifyAndAppend: true,
     pairedNotifyAndAppend: true,
@@ -125,11 +127,15 @@ const report = {
 };
 fs.writeFileSync(path.join(BOT, 'connected-owner-command-audit.json'), JSON.stringify(report, null, 2));
 
-console.log(`[owner-command-audit] ✅ ${commands.length} commandes valides (${files.length} fichiers) passent par le même chemin owner connecté`);
+console.log(`[owner-command-audit] ✅ ${commands.length} commandes valides + ${aliasCount} alias (${files.length} fichiers) passent par le même chemin owner connecté`);
 console.log('[owner-command-audit] ✅ bot principal + sous-sessions: notify/append-fromMe acceptés');
 console.log('[owner-command-audit] ✅ isMe/isOwner propagé + watchdog anti-silence actif');
+
 if (ownerSelfBlockers.length) {
-  console.warn(`[owner-command-audit] ⚠️ ${ownerSelfBlockers.length} fichier(s) contiennent un garde fromMe à examiner: ${ownerSelfBlockers.join(', ')}`);
-} else {
-  console.log('[owner-command-audit] ✅ aucun return direct fromMe détecté dans les modules de commandes');
+  throw new Error(
+    `[owner-command-audit] ${ownerSelfBlockers.length} commande(s) bloquent encore explicitement fromMe: ${ownerSelfBlockers.join(', ')}`
+  );
 }
+
+console.log('[owner-command-audit] ✅ aucun return direct fromMe détecté dans les modules de commandes');
+console.log('[owner-command-audit] ✅ audit bloquant réussi : le build s’arrête si une commande perd le chemin de réponse owner connecté');
