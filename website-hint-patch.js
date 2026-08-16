@@ -23,9 +23,6 @@ function patchSpecialPresentation() {
   let src = fs.readFileSync(specialPresentation, 'utf8');
   if (src.includes(MARKER) && src.includes(SITE)) return;
 
-  // install-global-footer.js applique désormais le footer uniquement aux commandes
-  // menu/ping/etc. via displayText. L'ancien website-hint-patch cherchait encore
-  // GLOBAL_FOOTER dans responseStyle/styleManager, symbole qui n'existe plus.
   const target = `String(text).trim() + '\\n\\n${FOOTER}'`;
   const replacement = `String(text).trim() + '\\n\\n${FOOTER}\\n${HINT}' /* ${MARKER} */`;
   const count = src.split(target).length - 1;
@@ -33,8 +30,6 @@ function patchSpecialPresentation() {
   if (count === 1) {
     src = src.replace(target, replacement);
   } else if (count === 0 && src.includes(SITE)) {
-    // Une révision future peut avoir déjà intégré le lien sans notre marqueur.
-    // Dans ce cas on considère la cible fonctionnellement déjà patchée.
     console.log('[website-hint] specialPresentation contient déjà le site');
   } else {
     throw new Error(`[website-hint] footer ciblé specialPresentation attendu 1 fois, trouvé ${count}`);
@@ -47,16 +42,12 @@ function patchWelcomeGoodbye() {
   let src = fs.readFileSync(handler, 'utf8');
   if (src.includes(MARKER) && src.includes(SITE)) return;
 
-  // Le footer welcome/goodbye est injecté par install-global-footer.js dans les
-  // captions et fallbacks texte. On enrichit seulement ces occurrences ciblées.
   const escapedFooter = FOOTER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const footerLiteralRe = new RegExp(escapedFooter, 'g');
   const matches = src.match(footerLiteralRe) || [];
 
   if (matches.length > 0) {
     src = src.replace(footerLiteralRe, `${FOOTER}\\n${HINT}`);
-    // Marqueur placé à côté d'un marqueur de footer ciblé existant, sans changer
-    // le texte envoyé à l'utilisateur.
     if (src.includes('[WELCOME TARGETED CONNECTION FOOTER]')) {
       src = src.replace('[WELCOME TARGETED CONNECTION FOOTER]', `[WELCOME TARGETED CONNECTION FOOTER] ${MARKER}`);
     } else {
@@ -86,3 +77,7 @@ if (!specialSrc.includes(SITE)) throw new Error('[website-hint] lien absent de s
 if (!handlerSrc.includes(SITE)) throw new Error('[website-hint] lien absent de handler.js');
 
 console.log(`[website-hint] ✅ lien de connexion actif sur les footers ciblés: ${SITE}`);
+
+// Exécuté tard dans le postinstall, juste avant les audits de commandes.
+// Corrige les collisions de noms et garantit la dépendance File Lab.
+require('./validate-command-collisions-fix');
