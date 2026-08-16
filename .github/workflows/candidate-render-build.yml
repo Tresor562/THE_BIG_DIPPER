@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="f83528d1ba83b800780478dee4497ff9a23ee170"
+          EXPECTED="3240cda058bb6b8e0149298e267b22af2750820b"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
