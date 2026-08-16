@@ -7,6 +7,9 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const installer = path.join(BOT, 'scripts', 'install-response-style.js');
+const guaranteePrep = path.join(BOT, 'scripts', 'prepare-command-response-guarantee.js');
+const guaranteeInstaller = path.join(BOT, 'scripts', 'install-command-response-guarantee.js');
+const ownerAudit = path.join(ROOT, 'verify-connected-owner-command-path.js');
 const handler = path.join(BOT, 'handler.js');
 const style = path.join(BOT, 'utils', 'responseStyle.js');
 const COMPAT_MARKER = '[RESPONSE STYLE FLEXIBLE SEND ANCHOR]';
@@ -16,7 +19,7 @@ const COMPAT_MARKER = '[RESPONSE STYLE FLEXIBLE SEND ANCHOR]';
 // /delsession fonctionne aussi sur les sessions déjà déconnectées.
 require('./session-delete-patch');
 
-for (const file of [installer, handler, style]) {
+for (const file of [installer, guaranteePrep, guaranteeInstaller, ownerAudit, handler, style]) {
   if (!fs.existsSync(file)) throw new Error(`[response-style-deploy] fichier absent: ${file}`);
 }
 
@@ -54,12 +57,24 @@ function makeInstallerPatchOrderResilient() {
   console.log('[response-style-deploy] installateur rendu résilient à l\'ordre des patches');
 }
 
-makeInstallerPatchOrderResilient();
+function runNode(file, label, cwd = BOT) {
+  const run = spawnSync(process.execPath, [file], { cwd, encoding: 'utf8', timeout: 120_000 });
+  if (run.stdout) process.stdout.write(run.stdout);
+  if (run.stderr) process.stderr.write(run.stderr);
+  if (run.error) throw new Error(`[response-style-deploy] ${label}: ${run.error.message}`);
+  if (run.status !== 0) throw new Error(`[response-style-deploy] ${label} échoué (${run.status})`);
+}
 
-const run = spawnSync(process.execPath, [installer], { cwd: BOT, encoding: 'utf8' });
-if (run.stdout) process.stdout.write(run.stdout);
-if (run.stderr) process.stderr.write(run.stderr);
-if (run.status !== 0) throw new Error(`[response-style-deploy] installation échouée (${run.status})`);
+makeInstallerPatchOrderResilient();
+runNode(installer, 'installation response-style');
+
+// Le watchdog response-style garantissait déjà une réponse pour la majorité
+// des commandes, mais honorait encore command.noReply=true. Pour le compte
+// WhatsApp réellement connecté au bot, aucune commande explicite ne doit être
+// silencieuse : on installe le garde-fou complet qui supprime ce bypass et
+// fournit feedback/progression/erreur si la commande elle-même n'envoie rien.
+runNode(guaranteePrep, 'préparation command-response-guarantee');
+runNode(guaranteeInstaller, 'installation command-response-guarantee');
 
 for (const file of [style, handler]) {
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
@@ -76,6 +91,9 @@ const required = [
   '[COMMAND RESPONSE WATCHDOG]',
   '[COMMAND ERROR RESPONSE]',
   '[COMMAND RESPONSE CONTEXT]',
+  '[COMMAND RESPONSE GUARANTEE]',
+  '[NO SILENT noReply]',
+  'sendCommandFeedback(',
   'commandResponseStorage.run(',
   'responseTrace.responses += 1',
   'relayTrace.responses += 1',
@@ -87,4 +105,9 @@ for (const marker of required) {
   }
 }
 
-console.log('[response-style-deploy] ✅ send/relay/pending suivis; anti-silence appliqué au bot déployé');
+// Audit exhaustif du registre final : charge chaque fichier de commande,
+// vérifie le chemin fromMe/owner local des deux types de sessions et écrit le
+// nombre exact de commandes couvertes dans connected-owner-command-audit.json.
+runNode(ownerAudit, 'audit owner connecté', ROOT);
+
+console.log('[response-style-deploy] ✅ toutes les commandes explicites ont un chemin de réponse, y compris pour le compte connecté');
