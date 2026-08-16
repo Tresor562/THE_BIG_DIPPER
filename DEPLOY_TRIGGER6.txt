@@ -1,3 +1,5 @@
-Render deploy trigger — feature pack + Exaucee cumulative release
-Triggered: 2026-08-16 08:37 GMT+1
-Bot revision: 8512af1d532f71b12905d0ee9aad2fd069b0ea6f
+Render deploy trigger — feature pack runtime v3 cumulative release
+Triggered: 2026-08-16 09:44 GMT+1
+Bot revision: 6fecd09359089c9989b1e8bcb58d08b6d4180e0c
+Wrapper revision before trigger: 20857613bfe5de426f05783092d761b30317fee9
+Reason: force a fresh Render auto-deploy event from a real main-branch content commit.
