@@ -26,6 +26,9 @@ const KEEP_BY_NAME = new Set([
   'approveall', 'requests', 'delete', 'clean', 'kickall', 'purification',
   'grouplink', 'resetlink', 'revoke', 'setname', 'setsubject', 'setdesc',
   'setdescription', 'setgrouppp', 'setgcpp', 'groupopen', 'groupclose',
+  // La commande ne contient que le toggle DB, mais son runtime supprime/kick
+  // les messages via utils/featurePackRuntime.js : le bot doit donc être admin.
+  'antiwalink',
 ]);
 
 function walk(dir) {
@@ -56,15 +59,13 @@ for (const file of files) {
     continue;
   }
 
-  // IMPORTANT :
-  // - la virgule est placée AVANT le commentaire afin de ne jamais être
-  //   avalée par `//` ;
-  // - seuls espaces/tabulations sont consommés, jamais un retour à la ligne,
-  //   pour préserver la structure de l'objet même si la propriété est la
-  //   dernière de son bloc.
+  // IMPORTANT : utiliser un commentaire de bloc, jamais //.
+  // Certaines commandes sont minifiées sur une seule ligne : un commentaire //
+  // avalerait tout le reste du fichier et provoquerait "Unexpected end of input".
+  // La virgule est placée avant le commentaire afin de garder l'objet valide.
   src = src.replace(
     /botAdminNeeded[ \t]*:[ \t]*true[ \t]*,?/g,
-    'botAdminNeeded: false, // [CAPABILITY AUDIT] aucune opération WhatsApp exigeant bot-admin'
+    'botAdminNeeded: false, /* [CAPABILITY AUDIT] aucune opération WhatsApp exigeant bot-admin */'
   );
   fs.writeFileSync(file, src, 'utf8');
 
