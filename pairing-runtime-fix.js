@@ -48,41 +48,93 @@ patch(
 );
 
 // [FIX COMMANDES SOUS-SESSIONS]
-// Baileys peut livrer les messages envoyés depuis le téléphone du compte
-// connecté avec type='append' et fromMe=true. Le bot principal gère déjà ce
-// cas, mais sessionManager.js ignorait tout ce qui n'était pas 'notify'.
-// Résultat : session affichée connectée, mais les commandes tapées depuis le
-// compte connecté n'atteignent jamais handler.handleMessage().
+// Plusieurs patches du wrapper peuvent légitimement installer cette capacité
+// avant pairing-runtime-fix.js (notamment kickall-policy-patch.js). L'ancienne
+// version exigeait alors encore la ligne notify-only et cassait le build avec
+// "attendu 1 occurrence, trouvé 0" alors que le comportement était déjà bon.
 //
-// IMPORTANT BUILD : session-uptime-guard-patch.js s'exécute plus tard et
-// protège la même capacité. On pose donc aussi ses marqueurs officiels afin
-// qu'il reconnaisse cet état comme déjà corrigé au lieu de chercher l'ancienne
-// ligne notify-only et de faire échouer un rebuild idempotent.
-patch(
-  sessionRel,
-  "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify') return;",
-  `  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    // [FIX APPEND OWNER] [MULTI SESSION APPEND FROMME]
-    // accepter les messages normaux et ceux envoyés depuis le compte connecté,
-    // souvent livrés en type='append'.
-    if (type !== 'notify' && type !== 'append') return;`,
-  '[MULTI SESSION APPEND FROMME]',
-  'messages append du compte connecté acceptés'
-);
+// Ici on accepte les deux états :
+//   1) ancien runtime notify-only -> on le transforme ;
+//   2) runtime déjà corrigé notify+append -> on ajoute seulement les marqueurs
+//      officiels attendus par session-uptime-guard-patch.js.
+function ensureConnectedOwnerAppendPath() {
+  const file = path.join(BOT, sessionRel);
+  let src = fs.readFileSync(file, 'utf8');
+  let changed = false;
 
-patch(
-  sessionRel,
-  "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;",
-  `    for (const msg of messages) {
-      if (!msg.message || !msg.key?.id) continue;
+  const appendMarker = '[MULTI SESSION APPEND FROMME]';
+  if (!src.includes(appendMarker)) {
+    const oldListener = "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify') return;";
+    const fixedListener = "  sock.ev.on('messages.upsert', async ({ messages, type }) => {\n    if (type !== 'notify' && type !== 'append') return; // [MULTI SESSION APPEND FROMME]";
+    const semanticLine = "    if (type !== 'notify' && type !== 'append') return;";
 
-      // [MULTI SESSION APPEND FILTER]
-      // Les append non-fromMe sont généralement des replays/synchronisations
-      // d'historique : ne pas les exécuter pour éviter les doubles commandes.
-      if (type === 'append' && !msg.key?.fromMe) continue;`,
-  '[MULTI SESSION APPEND FILTER]',
-  'filtre anti-doublon append'
-);
+    const oldCount = src.split(oldListener).length - 1;
+    const semanticCount = src.split(semanticLine).length - 1;
+
+    if (oldCount === 1) {
+      src = src.replace(oldListener, fixedListener);
+      changed = true;
+      console.log('[pairing-runtime] messages append du compte connecté acceptés');
+    } else if (oldCount === 0 && semanticCount === 1) {
+      src = src.replace(semanticLine, `${semanticLine} // ${appendMarker}`);
+      changed = true;
+      console.log('[pairing-runtime] messages append déjà acceptés — marqueur officiel ajouté');
+    } else if (oldCount === 0 && src.includes("type !== 'notify' && type !== 'append'")) {
+      throw new Error('[pairing-runtime] chemin notify+append présent mais ambigu — refus de modifier plusieurs listeners');
+    } else {
+      throw new Error(`[pairing-runtime] messages append du compte connecté acceptés: attendu ancien listener ou état déjà corrigé, trouvé old=${oldCount} semantic=${semanticCount}`);
+    }
+  } else {
+    console.log('[pairing-runtime] messages append du compte connecté acceptés déjà appliqué');
+  }
+
+  const filterMarker = '[MULTI SESSION APPEND FILTER]';
+  if (!src.includes(filterMarker)) {
+    const filterVariants = [
+      "      if (type === 'append' && !msg.key.fromMe) continue;",
+      "      if (type === 'append' && !msg.key?.fromMe) continue;",
+    ];
+    const matches = filterVariants
+      .map(line => ({ line, count: src.split(line).length - 1 }))
+      .filter(x => x.count > 0);
+    const total = matches.reduce((sum, x) => sum + x.count, 0);
+
+    if (total === 1) {
+      const line = matches[0].line;
+      src = src.replace(line, `${line} // ${filterMarker}`);
+      changed = true;
+      console.log('[pairing-runtime] filtre anti-doublon append déjà présent — marqueur officiel ajouté');
+    } else if (total === 0) {
+      const loopAnchor = "    for (const msg of messages) {\n      if (!msg.message || !msg.key?.id) continue;";
+      const count = src.split(loopAnchor).length - 1;
+      if (count !== 1) {
+        throw new Error(`[pairing-runtime] filtre anti-doublon append: ancre boucle attendue 1 fois, trouvée ${count}`);
+      }
+      src = src.replace(
+        loopAnchor,
+        `${loopAnchor}\n\n      // ${filterMarker}\n      // Les append non-fromMe sont des replays/synchronisations d'historique.\n      if (type === 'append' && !msg.key?.fromMe) continue;`
+      );
+      changed = true;
+      console.log('[pairing-runtime] filtre anti-doublon append appliqué');
+    } else {
+      throw new Error(`[pairing-runtime] filtre anti-doublon append ambigu: ${total} occurrences`);
+    }
+  } else {
+    console.log('[pairing-runtime] filtre anti-doublon append déjà appliqué');
+  }
+
+  if (changed) fs.writeFileSync(file, src);
+
+  const final = fs.readFileSync(file, 'utf8');
+  if (!final.includes("type !== 'notify' && type !== 'append'")) {
+    throw new Error('[pairing-runtime] invariant notify+append absent après correction');
+  }
+  if (!final.includes("type === 'append' && !msg.key") || !final.includes(filterMarker)) {
+    throw new Error('[pairing-runtime] invariant filtre append non-fromMe absent après correction');
+  }
+}
+
+ensureConnectedOwnerAppendPath();
 
 // Le pairing par code ne dépend pas d'un QR. requestPairingCode() conserve
 // son petit délai de grâce propre et appelle directement Baileys. Cela garde
