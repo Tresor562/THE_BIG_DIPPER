@@ -14,10 +14,24 @@ function patch(rel,search,replacement,marker,label){
   console.log(`[stability] ${label} appliqué`);
 }
 
-patch('utils/memoryGuard.js',
-`async function triggerGracefulRestart(memMB, cfg) {\n  // Anti-spam : pas 2 restarts en moins de 3 minutes`,
-`async function triggerGracefulRestart(memMB, cfg) {\n  if (process.env.RENDER === 'true') {\n    _warn(\`[MemoryGuard] Render détecté — restart volontaire annulé à \${memMB} Mo; cleanup conservé, Render gère la limite mémoire.\`);\n    _isRestartPending = false;\n    return;\n  }\n\n  // Anti-spam : pas 2 restarts en moins de 3 minutes`,
-'Render détecté — restart volontaire annulé','MemoryGuard Render');
+function patchMemoryGuardRender(){
+  const rel='utils/memoryGuard.js';
+  const file=path.join(BOT,rel);
+  let src=fs.readFileSync(file,'utf8');
+  const marker='Render détecté — restart volontaire annulé';
+  if(src.includes(marker)){ console.log('[stability] MemoryGuard Render déjà appliqué'); return; }
+
+  const fn='async function triggerGracefulRestart(memMB, cfg) {';
+  const count=src.split(fn).length-1;
+  if(count!==1) throw new Error(`[stability] MemoryGuard Render: fonction triggerGracefulRestart attendue 1 fois, trouvée ${count}`);
+
+  const guard=`${fn}\n  if (process.env.RENDER === 'true') {\n    _warn(\`[MemoryGuard] Render détecté — restart volontaire annulé à \${memMB} Mo; cleanup conservé, Render gère la limite mémoire.\`);\n    _isRestartPending = false;\n    return;\n  }`;
+  src=src.replace(fn,guard);
+  fs.writeFileSync(file,src);
+  console.log('[stability] MemoryGuard Render appliqué');
+}
+
+patchMemoryGuardRender();
 
 // WhatsApp change régulièrement la version Web acceptée. Le build suivant
 // (auth-cache-fix.js) attend déjà fetchLatestWaWebVersion : cette étape doit
