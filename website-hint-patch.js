@@ -23,12 +23,8 @@ patchSpecialPresentation();patchWelcomeGoodbye();for(const file of [specialPrese
 const specialSrc=fs.readFileSync(specialPresentation,'utf8'),handlerSrc=fs.readFileSync(handler,'utf8');if(!specialSrc.includes(SITE))throw new Error('[website-hint] lien absent de specialPresentation.js');if(!handlerSrc.includes(SITE))throw new Error('[website-hint] lien absent de handler.js');
 console.log(`[website-hint] ✅ lien de connexion actif sur les footers ciblés: ${SITE}`);
 
-// Correctifs fonctionnels tardifs : response-style est déjà installé à ce stade.
 require('./owner-response-header-patch');
 require('./neko-runtime-fix');
-// Installe le handover de déploiement avant les audits finaux : les fichiers
-// modifiés sont syntax-checkés par l'installateur et audités ensuite comme le
-// reste du runtime réellement lancé par Render.
+require('./ux-media-reply-fix');
 require('./bot/scripts/install-deployment-continuity');
-// Corrige ensuite les collisions de noms et garantit les dépendances File Lab.
 require('./validate-command-collisions-fix');
