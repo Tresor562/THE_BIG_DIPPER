@@ -26,5 +26,6 @@ console.log(`[website-hint] ✅ lien de connexion actif sur les footers ciblés:
 require('./owner-response-header-patch');
 require('./neko-runtime-fix');
 require('./ux-media-reply-fix');
+require('./autoreply-persistence-fix');
 require('./bot/scripts/install-deployment-continuity');
 require('./validate-command-collisions-fix');
