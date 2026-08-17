@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = 'b34e60a7fcdec2c7699ffef09d0de11dbcf5293d';
+const TARGET_BOT_SHA = '44b7ac75e8957a93c2459e4671c5008753a4469f';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
@@ -16,7 +16,6 @@ function runGit(args, label, cwd = ROOT) {
   if (result.error) throw new Error(`[submodule] ${label}: impossible d'exécuter git: ${result.error.message}`);
   if (result.status !== 0) throw new Error(`[submodule] ${label} a échoué (code ${result.status}).`);
 }
-
 function runHotInstallerPreflight() {
   const testFile = path.join(BOT, 'tests', 'hot-installer.test.js');
   if (!fs.existsSync(testFile)) throw new Error('[submodule] tests/hot-installer.test.js absent du commit privé candidat.');
@@ -28,7 +27,6 @@ function runHotInstallerPreflight() {
   if (result.status !== 0) throw new Error(`[submodule] préflight HOT échoué (code ${result.status}).`);
   console.log('[submodule] ✅ préflight HOT installer validé');
 }
-
 function ensureBotSubmodule() {
   if (!fs.existsSync(path.join(ROOT,'.gitmodules'))) throw new Error('[submodule] .gitmodules absent : impossible de récupérer bot/.');
   console.log('[submodule] synchronisation + remise à zéro déterministe de bot/...');
@@ -50,6 +48,5 @@ function ensureBotSubmodule() {
   require('./verify-build-dependency-order')();
   runHotInstallerPreflight();
 }
-
 if(require.main===module) ensureBotSubmodule();
 module.exports=ensureBotSubmodule;
