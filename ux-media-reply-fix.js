@@ -8,8 +8,9 @@ const BOT = path.join(__dirname, 'bot');
 const carousel = path.join(BOT, 'utils', 'interactiveCarousel.js');
 const handler = path.join(BOT, 'handler.js');
 const reply = path.join(BOT, 'commands', 'bot_sovereignty', 'reply.js');
+const socialSearch = path.join(BOT, 'commands', 'social_media_download', 'socialsearch.js');
 
-for (const f of [carousel, handler, reply]) if (!fs.existsSync(f)) throw new Error('[ux-fix] fichier absent: ' + f);
+for (const f of [carousel, handler, reply, socialSearch]) if (!fs.existsSync(f)) throw new Error('[ux-fix] fichier absent: ' + f);
 
 const carouselSource = `'use strict';
 const { proto, prepareWAMessageMedia, generateWAMessageFromContent } = require('@whiskeysockets/baileys');
@@ -23,14 +24,20 @@ module.exports={normalizeItems,sendMediaCarousel};
 `;
 fs.writeFileSync(carousel, carouselSource, 'utf8');
 
+// Pour les recherches sociales, privilégier les miniatures dans le carrousel.
+// Les URL vidéo CDN TikTok expirent/protègent souvent l'upload et peuvent faire
+// rejeter toute la carte. La vidéo reste accessible via l'URL source affichée.
+let s = fs.readFileSync(socialSearch, 'utf8');
+s = s.replace("makeCommand({name:'tiktoksearch',aliases:['tiktok2','ttsearch'],label:'TikTok',endpoint:'/search/tiktok',mode:'video'})", "makeCommand({name:'tiktoksearch',aliases:['tiktok2','ttsearch'],label:'TikTok',endpoint:'/search/tiktok'})");
+fs.writeFileSync(socialSearch, s, 'utf8');
+
 let h = fs.readFileSync(handler, 'utf8');
 const infoBlock = /if \(!arCfg\?\.active\) \{[\s\S]*?\n\s*\} else \{/m;
 if (!h.includes('[AUTOREPLY SILENT WHEN UNCONFIGURED]')) {
   const m = h.match(infoBlock);
   if (!m) throw new Error('[ux-fix] bloc autoreply sans config introuvable');
-  h = h.replace(infoBlock, `if (!arCfg?.active) {\n            // [AUTOREPLY SILENT WHEN UNCONFIGURED]\n            // Une simple mention ne produit rien tant qu'aucune note vidéo n'est configurée.\n            console.log('[autoReply] mention ignorée silencieusement : aucune note configurée');\n            if (!isCommand) return;\n          } else {`);
+  h = h.replace(infoBlock, `if (!arCfg?.active) {\n            // [AUTOREPLY SILENT WHEN UNCONFIGURED]\n            console.log('[autoReply] mention ignorée silencieusement : aucune note configurée');\n            if (!isCommand) return;\n          } else {`);
 }
-// Si la config existe mais que le fichier a disparu/corrompu, rester discret côté chat.
 h = h.replace(/try \{\n\s*await sock\.sendMessage\(from, \{\n\s*text: `\*⚠️ Erreur note vidéo\*[\s\S]*?\n\s*\} catch \(_\) \{\}/m, "// [AUTOREPLY SILENT BROKEN MEDIA] erreur journalisée uniquement");
 h = h.replace(/try \{\n\s*await sock\.sendMessage\(from, \{\n\s*text: `\*⚠️ Fichier vidéo corrompu\*[\s\S]*?\n\s*\} catch \(_\) \{\}/m, "// [AUTOREPLY SILENT CORRUPT MEDIA] erreur journalisée uniquement");
 fs.writeFileSync(handler, h, 'utf8');
@@ -39,13 +46,13 @@ let r = fs.readFileSync(reply, 'utf8');
 if (!r.includes('[AUTOREPLY CONFIRM AUTO DELETE 3S]')) {
   const old = `      // Toujours répondre dans le chat courant (groupe ou privé)\n      await reply(confirmMsg);\n\n      // Bonus : aussi en DM si en groupe (non bloquant)\n      if (isGroup) {\n        sock.sendMessage(senderNumber + '@s.whatsapp.net', { text: confirmMsg }).catch(() => {});\n      }`;
   if (!r.includes(old)) throw new Error('[ux-fix] confirmation .reply introuvable');
-  const neu = `      // [AUTOREPLY CONFIRM AUTO DELETE 3S]\n      // Confirmation courte et discrète : visible 3 secondes puis supprimée.\n      const confirmSent = await reply(confirmMsg);\n      if (confirmSent?.key) {\n        const timer = setTimeout(() => {\n          sock.sendMessage(chatId, { delete: confirmSent.key }).catch(() => {});\n        }, 3000);\n        if (timer.unref) timer.unref();\n      }`;
+  const neu = `      // [AUTOREPLY CONFIRM AUTO DELETE 3S]\n      const confirmSent = await reply(confirmMsg);\n      if (confirmSent?.key) {\n        const timer = setTimeout(() => {\n          sock.sendMessage(chatId, { delete: confirmSent.key }).catch(() => {});\n        }, 3000);\n        if (timer.unref) timer.unref();\n      }`;
   r = r.replace(old, neu);
 }
 fs.writeFileSync(reply, r, 'utf8');
 
-for (const f of [carousel, handler, reply]) {
+for (const f of [carousel, handler, reply, socialSearch]) {
   const c = spawnSync(process.execPath, ['--check', f], { encoding: 'utf8' });
   if (c.status !== 0) throw new Error('[ux-fix] syntaxe invalide '+path.relative(BOT,f)+': '+(c.stderr||c.stdout));
 }
-console.log('[ux-fix] ✅ carrousels horizontaux, mentions silencieuses et confirmation .reply auto-effacée');
+console.log('[ux-fix] ✅ carrousels horizontaux, recherches par miniatures, mentions silencieuses et confirmation .reply auto-effacée');
