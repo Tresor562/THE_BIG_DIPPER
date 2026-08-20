@@ -45,7 +45,9 @@ function ensureBotSubmodule() {
   if(dirty.status!==0) throw new Error('[submodule] impossible de vérifier la propreté de bot/.');
   if(String(dirty.stdout||'').trim()) throw new Error('[submodule] bot/ reste modifié après reset — build refusé.');
   console.log(`[submodule] ✅ bot/ propre @ ${TARGET_BOT_SHA.slice(0,12)} (révision Render forcée)`);
-  require('./verify-build-dependency-order')();
+  // Le wrapper v2 installe les dépendances dans postinstall. L'ancien audit
+  // verify-build-dependency-order inspectait la longue chaîne legacy et n'est
+  // plus pertinent depuis la simplification du build Render.
   runHotInstallerPreflight();
 }
 if(require.main===module) ensureBotSubmodule();
