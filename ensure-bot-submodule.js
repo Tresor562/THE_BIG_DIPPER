@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = 'ac66c13f997528e83b18d2dce84de34aec03560e';
+const TARGET_BOT_SHA = 'ef954c501edb693fbf2fad6aad36e04f2f45c155';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
@@ -45,9 +45,6 @@ function ensureBotSubmodule() {
   if(dirty.status!==0) throw new Error('[submodule] impossible de vérifier la propreté de bot/.');
   if(String(dirty.stdout||'').trim()) throw new Error('[submodule] bot/ reste modifié après reset — build refusé.');
   console.log(`[submodule] ✅ bot/ propre @ ${TARGET_BOT_SHA.slice(0,12)} (révision Render forcée)`);
-  // Le wrapper v2 installe les dépendances dans postinstall. L'ancien audit
-  // verify-build-dependency-order inspectait la longue chaîne legacy et n'est
-  // plus pertinent depuis la simplification du build Render.
   runHotInstallerPreflight();
 }
 if(require.main===module) ensureBotSubmodule();
