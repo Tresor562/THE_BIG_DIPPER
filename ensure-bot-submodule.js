@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = 'f03c64df1017617eb22bebeb26ca95573b2f26ff';
+const TARGET_BOT_SHA = '0a90c19fa790c2bf12ccc36c5d0652a654301dba';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
@@ -20,7 +20,7 @@ function runHotInstallerPreflight() {
   const testFile = path.join(BOT, 'tests', 'hot-installer.test.js');
   if (!fs.existsSync(testFile)) throw new Error('[submodule] tests/hot-installer.test.js absent du commit privé candidat.');
   console.log('[submodule] préflight HOT installer...');
-  const result = spawnSync(process.execPath, ['--test','tests/hot-installer.test.js'], { cwd: BOT, encoding:'utf8', timeout:45000, killSignal:'SIGKILL' });
+  const result = spawnSync(process.execPath, ['--test','tests/hot-installer.test.js'], { cwd:BOT, encoding:'utf8', timeout:45000, killSignal:'SIGKILL' });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   if (result.error) throw new Error(`[submodule] préflight HOT interrompu: ${result.error.message}`);
