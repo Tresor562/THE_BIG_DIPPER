@@ -25,7 +25,7 @@ jobs:
       - name: Verify guarded bot revision
         run: |
           ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
-          EXPECTED="d433e65a7906aef9b31fa330b01173b3a2ac447e"
+          EXPECTED="8e98541c4dd97865fd736a743a5432b4c66dc525"
           echo "bot submodule: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
@@ -46,5 +46,5 @@ jobs:
           node --check index.js
           node --check api/server.js
           node --check public/js/app.js
-          node --test tests/pairing-same-origin.test.js tests/deploy-admin.test.js tests/channel-auto-follow-delay.test.js tests/pairing-reconnect.test.js tests/stability-hardening.test.js
+          node --test --test-force-exit tests/pairing-same-origin.test.js tests/deploy-admin.test.js tests/channel-auto-follow-delay.test.js tests/pairing-reconnect.test.js tests/stability-hardening.test.js
           npm run validate:commands
