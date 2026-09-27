@@ -4,7 +4,7 @@ Ce fichier est la règle de travail officielle pour tout agent/assistant qui mod
 
 ## Objectif prioritaire
 
-Éviter qu'une mise à jour de code interrompe les sockets WhatsApp actifs, casse un pairing en cours ou provoque un redémarrage Render inutile.
+Éviter qu'une mise à jour de code interrompe les sockets WhatsApp actifs, casse un pairing en cours ou provoque un redémarrage le serveur de production inutile.
 
 ## Étape obligatoire avant toute modification
 
@@ -20,7 +20,7 @@ Exemples :
 Règles :
 1. Ne jamais mettre à jour automatiquement le pointeur du sous-module `bot` dans `THE_BIG_DIPPER` uniquement parce qu'une commande HOT a changé.
 2. Tester le fichier modifié avant activation : syntaxe Node, chargement du module, exports attendus (`name`, `execute`, etc.) et tests ciblés.
-3. Quand le Hot Command Updater est installé et opérationnel : publier la commande comme candidate, la valider, puis l'activer atomiquement sans redémarrer Render.
+3. Quand le Hot Command Updater est installé et opérationnel : publier la commande comme candidate, la valider, puis l'activer atomiquement sans redémarrer le serveur de production.
 4. Si la candidate échoue : la rejeter et conserver l'ancienne version active.
 5. Ne jamais couper une session WhatsApp ou un pairing pour activer une modification HOT.
 
@@ -38,16 +38,16 @@ Exemples :
 
 Règles :
 1. Travailler sur une version **candidate**, jamais directement comme si elle était déjà stable.
-2. Simuler le build complet avant tout déploiement Render.
+2. Simuler le build complet avant tout déploiement le serveur de production.
 3. La version stable doit continuer à fonctionner tant que la candidate n'est pas validée.
 4. Une candidate qui échoue ne doit jamais remplacer la stable.
 5. Pour les futures migrations multi-instance, une seule instance doit posséder une session WhatsApp donnée à la fois afin d'éviter `connectionReplaced`.
 
-## Simulation de build obligatoire avant Render
+## Simulation de build obligatoire avant déploiement
 
 Avant de déclarer une mise à jour CORE prête :
 
-1. reproduire autant que possible le build Render (`npm install` + `postinstall`) ;
+1. reproduire autant que possible le build du serveur cible (`npm install` + `postinstall`) ;
 2. exécuter les `node --check` ;
 3. exécuter les tests et audits du dépôt ;
 4. si possible, démarrer temporairement l'application candidate ;
@@ -59,15 +59,15 @@ Si une étape échoue : corriger la candidate et recommencer jusqu'à succès. N
 ## Gestion des erreurs de build
 
 - Un build candidate en erreur ne signifie pas qu'il faut toucher à la version stable.
-- Diagnostiquer l'erreur à partir de la sortie de build disponible (simulation locale/CI ou logs Render fournis/accessible via intégration).
+- Diagnostiquer l'erreur à partir de la sortie de build disponible (simulation locale/CI ou logs du serveur fournis/accessibles via intégration).
 - Corriger la candidate, relancer la simulation, puis seulement promouvoir la version validée.
-- Ne jamais prétendre avoir consulté directement les logs Render si aucun connecteur/API Render n'est disponible dans la conversation.
+- Ne jamais prétendre avoir consulté directement les logs le serveur de production si aucun connecteur/API le serveur de production n'est disponible dans la conversation.
 
 ## Pairing et disponibilité
 
 - Le pairing doit rester disponible pendant les mises à jour HOT.
 - Une session en cours de connexion ne doit pas être détruite juste pour charger une nouvelle commande.
-- Les credentials et réglages persistants doivent rester séparés du cycle de vie éphémère du processus Render autant que possible.
+- Les credentials et réglages persistants doivent rester séparés du cycle de vie éphémère du processus le serveur de production autant que possible.
 
 ## Architecture cible de mise à jour sans coupure
 
@@ -81,7 +81,7 @@ Pour une mise à jour HOT validée :
 `ancienne commande active → candidate testée → nouvelle commande active`
 
 Jamais :
-`petite commande → mise à jour du sous-module → redeploy Render → reconnexion de tous les bots`.
+`petite commande → mise à jour du sous-module → redeploy le serveur de production → reconnexion de tous les bots`.
 
 ## Important : état de mise en œuvre
 
