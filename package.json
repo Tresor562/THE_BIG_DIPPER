@@ -1,8 +1,8 @@
 {
-  "name": "the-big-dipper-render-deploy",
+  "name": "the-big-dipper-server-deploy",
   "version": "1.0.0",
   "private": true,
-  "description": "Render deployment wrapper for THE BIG DIPPER",
+  "description": "Server deployment wrapper for THE BIG DIPPER",
   "scripts": {
     "preinstall": "node ensure-bot-submodule.js",
     "postinstall": "cd bot && npm install --omit=dev --no-audit --no-fund && node --check index.js && node --check handler.js && node --check api/server.js && npm run validate:commands",
