@@ -1,0 +1,50 @@
+name: Candidate server build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  server-build:
+    name: Wrapper deployment guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout wrapper
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify guarded bot revision
+        run: |
+          ACTUAL="$(git ls-tree HEAD bot | awk '{print $3}')"
+          EXPECTED="17354e0d4ee3e5d18b969d1f56cb4c8724ec4a79"
+          echo "bot submodule: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Validate wrapper scripts
+        run: |
+          node -e "const p=require('./package.json'); if(!p.scripts?.preinstall || !p.scripts?.postinstall || !p.scripts?.start) process.exit(1); console.log('wrapper scripts OK')"
+          node --check ensure-bot-submodule.js
+
+      - name: Initialize bot candidate
+        run: node ensure-bot-submodule.js
+
+      - name: Install bot dependencies
+        run: cd bot && npm install --omit=dev --no-audit --no-fund
+
+      - name: Validate pairing/server candidate
+        run: |
+          cd bot
+          node --check index.js
+          node --check api/server.js
+          node --check public/js/app.js
+          node --test tests/pairing-same-origin.test.js
+          npm run validate:commands
