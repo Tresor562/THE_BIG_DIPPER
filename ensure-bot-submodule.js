@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = 'ef954c501edb693fbf2fad6aad36e04f2f45c155';
+const TARGET_BOT_SHA = '17354e0d4ee3e5d18b969d1f56cb4c8724ec4a79';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
@@ -18,7 +18,7 @@ function runGit(args, label, cwd = ROOT) {
 }
 function runHotInstallerPreflight() {
   const testFile = path.join(BOT, 'tests', 'hot-installer.test.js');
-  if (!fs.existsSync(testFile)) throw new Error('[submodule] tests/hot-installer.test.js absent du commit privé candidat.');
+  if (!fs.existsSync(testFile)) throw new Error('[submodule] tests/hot-installer.test.js absent du commit candidat.');
   console.log('[submodule] préflight HOT installer...');
   const result = spawnSync(process.execPath, ['--test','tests/hot-installer.test.js'], { cwd:BOT, encoding:'utf8', timeout:45000, killSignal:'SIGKILL' });
   if (result.stdout) process.stdout.write(result.stdout);
@@ -44,7 +44,7 @@ function ensureBotSubmodule() {
   const dirty=spawnSync('git',['status','--porcelain'],{cwd:BOT,encoding:'utf8'});
   if(dirty.status!==0) throw new Error('[submodule] impossible de vérifier la propreté de bot/.');
   if(String(dirty.stdout||'').trim()) throw new Error('[submodule] bot/ reste modifié après reset — build refusé.');
-  console.log(`[submodule] ✅ bot/ propre @ ${TARGET_BOT_SHA.slice(0,12)} (révision Render forcée)`);
+  console.log(`[submodule] ✅ bot/ propre @ ${TARGET_BOT_SHA.slice(0,12)} (révision serveur forcée)`);
   runHotInstallerPreflight();
 }
 if(require.main===module) ensureBotSubmodule();
