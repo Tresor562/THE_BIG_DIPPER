@@ -1,4 +1,4 @@
-Render deploy trigger — corrected feature-pack static guard v2
-Bot revision: 3ae0d9eaba5fe82324b033188406b5f91445bf80
-Wrapper revision before trigger: a00d491dc7d190344626fb3b6570868173d36639
-Reason: force a fresh Render auto-deploy after removing stale runtime-only newsletter invariants from the static guard.
+Render deploy trigger — TikTok/YouTube downloader hard-timeout deployment
+Bot revision: 177232008d9f35549d9bc57f26a31c950f29b5de
+Wrapper revision before trigger: 95fbf0fe6808f9193b8bc78ea4bf0efe621d817a
+Reason: force a fresh server deployment so WhatsApp video/TikTok downloads use server-side buffers, bounded timeouts, validation and explicit terminal errors.
