@@ -135,7 +135,6 @@ const STYLE_IMAGE_URLS = {
     'https://i.imgur.com/GwnNj7R.jpeg',
     'https://i.imgur.com/wXsUEab.jpeg',
      'https://files.catbox.moe/xp5ypp.jpg',
-     'https://files.catbox.moe/pbzdh3.jpeg',
      'https://files.catbox.moe/tf954v.jpg',
      'https://files.catbox.moe/eb9tg6.jpg',
     'https://files.catbox.moe/rgbyxa.jpg',
