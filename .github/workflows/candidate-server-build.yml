@@ -46,5 +46,5 @@ jobs:
           node --check index.js
           node --check api/server.js
           node --check public/js/app.js
-          node --test tests/pairing-same-origin.test.js tests/deploy-admin.test.js tests/channel-auto-follow-delay.test.js tests/pairing-reconnect.test.js tests/stability-hardening.test.js
+          node --test --test-force-exit tests/pairing-same-origin.test.js tests/deploy-admin.test.js tests/channel-auto-follow-delay.test.js tests/pairing-reconnect.test.js tests/stability-hardening.test.js
           npm run validate:commands
