@@ -1,4 +1,4 @@
-Render deploy trigger — TikTok/YouTube downloader hard-timeout deployment
-Bot revision: 177232008d9f35549d9bc57f26a31c950f29b5de
-Wrapper revision before trigger: 95fbf0fe6808f9193b8bc78ea4bf0efe621d817a
-Reason: force a fresh server deployment so WhatsApp video/TikTok downloads use server-side buffers, bounded timeouts, validation and explicit terminal errors.
+Server deploy trigger — WhatsApp downloader reliability fixes
+Bot revision: 3c93b453f1bb988e55ec0fbc14a53ab36a0ed87e
+Wrapper revision before trigger: bd9b57348428f815f21d2791f94b1c5008b0810c
+Reason: deploy bounded Facebook media fetching, bounded WhatsApp sends, TikTok hard timeouts, generic downloader guards, and local YouTube audio fallback for play/song.
