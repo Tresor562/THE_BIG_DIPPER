@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const BOT = path.join(ROOT, 'bot');
 const HANDLER = path.join(BOT, 'handler.js');
-const TARGET_BOT_SHA = '792738c25fd9f07ee7d804ecd873e0d8b16b39b7';
+const TARGET_BOT_SHA = 'b4c9fc77de05aaa94c75729d7c7fa522e29f253b';
 
 function runGit(args, label, cwd = ROOT) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
